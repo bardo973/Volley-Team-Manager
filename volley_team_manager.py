@@ -11,15 +11,18 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-st.markdown("""
+# ═══════════════════════════════════════════════════════════════════════
+# CSS INJECTED VIA st.html() - Funziona con Streamlit 1.42+
+# ═══════════════════════════════════════════════════════════════════════
+css_code = """
 <style>
+    /* Forza lo sfondo scuro su tutto */
     .stApp {
-        background:
-            radial-gradient(ellipse at 15% 20%, rgba(255, 107, 107, 0.08) 0%, transparent 50%),
+        background: radial-gradient(ellipse at 15% 20%, rgba(255, 107, 107, 0.08) 0%, transparent 50%),
             radial-gradient(ellipse at 85% 80%, rgba(72, 219, 251, 0.08) 0%, transparent 50%),
             radial-gradient(ellipse at 50% 50%, rgba(254, 202, 87, 0.03) 0%, transparent 60%),
-            linear-gradient(180deg, #0a0a0f 0%, #0d0d14 30%, #0a0a12 70%, #0d0d14 100%);
-        background-attachment: fixed;
+            linear-gradient(180deg, #0a0a0f 0%, #0d0d14 30%, #0a0a12 70%, #0d0d14 100%) !important;
+        background-attachment: fixed !important;
     }
 
     @keyframes gradient-shift {
@@ -51,6 +54,7 @@ st.markdown("""
         text-transform: uppercase;
     }
 
+    /* CARD GIOCATRICE */
     .player-card {
         background: rgba(255, 255, 255, 0.04);
         backdrop-filter: blur(16px);
@@ -60,9 +64,7 @@ st.markdown("""
         padding: 0;
         margin-bottom: 16px;
         transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-        box-shadow:
-            0 4px 24px rgba(0, 0, 0, 0.3),
-            inset 0 1px 0 rgba(255, 255, 255, 0.05);
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.05);
         overflow: hidden;
         position: relative;
     }
@@ -88,10 +90,7 @@ st.markdown("""
     .player-card:hover {
         background: rgba(255, 255, 255, 0.07);
         transform: translateY(-4px) scale(1.01);
-        box-shadow:
-            0 12px 40px rgba(0, 0, 0, 0.4),
-            0 0 60px rgba(255, 107, 107, 0.08),
-            inset 0 1px 0 rgba(255, 255, 255, 0.08);
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4), 0 0 60px rgba(255, 107, 107, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.08);
     }
 
     .player-photo-area {
@@ -118,16 +117,11 @@ st.markdown("""
         border-radius: 50%;
         object-fit: cover;
         border: 3px solid rgba(255, 255, 255, 0.15);
-        box-shadow:
-            0 0 30px rgba(255, 107, 107, 0.2),
-            0 4px 20px rgba(0, 0, 0, 0.3);
+        box-shadow: 0 0 30px rgba(255, 107, 107, 0.2), 0 4px 20px rgba(0, 0, 0, 0.3);
         transition: all 0.4s ease;
     }
     .player-card:hover .player-photo-img {
-        box-shadow:
-            0 0 50px rgba(255, 107, 107, 0.4),
-            0 0 80px rgba(72, 219, 251, 0.15),
-            0 4px 20px rgba(0, 0, 0, 0.3);
+        box-shadow: 0 0 50px rgba(255, 107, 107, 0.4), 0 0 80px rgba(72, 219, 251, 0.15), 0 4px 20px rgba(0, 0, 0, 0.3);
         transform: scale(1.05);
     }
     .player-photo-placeholder {
@@ -255,18 +249,6 @@ st.markdown("""
         position: relative;
         overflow: hidden;
     }
-    .stat-box::before {
-        content: '';
-        position: absolute;
-        top: -50%; left: -50%;
-        width: 200%; height: 200%;
-        background: radial-gradient(circle, rgba(255,255,255,0.03) 0%, transparent 60%);
-        opacity: 0;
-        transition: opacity 0.4s ease;
-    }
-    .stat-box:hover::before {
-        opacity: 1;
-    }
     .stat-box:hover {
         transform: translateY(-4px);
         box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 40px rgba(255, 107, 107, 0.06);
@@ -295,12 +277,8 @@ st.markdown("""
         border: 2px solid rgba(255, 255, 255, 0.15);
         border-radius: 16px;
         margin: 0 auto;
-        background:
-            linear-gradient(180deg, rgba(255,107,107,0.06) 0%, rgba(72,219,251,0.06) 100%);
-        box-shadow:
-            0 0 60px rgba(255, 107, 107, 0.08),
-            0 0 100px rgba(72, 219, 251, 0.04),
-            inset 0 0 60px rgba(0,0,0,0.2);
+        background: linear-gradient(180deg, rgba(255,107,107,0.06) 0%, rgba(72,219,251,0.06) 100%);
+        box-shadow: 0 0 60px rgba(255, 107, 107, 0.08), 0 0 100px rgba(72, 219, 251, 0.04), inset 0 0 60px rgba(0,0,0,0.2);
         overflow: hidden;
     }
     .court-line {
@@ -522,8 +500,18 @@ st.markdown("""
     ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
     ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
 </style>
-""", unsafe_allow_html=True)
+"""
 
+# Usa st.html() invece di st.markdown() per il CSS - FUNZIONA con Streamlit 1.42+
+try:
+    st.html(css_code)
+except AttributeError:
+    # Fallback per versioni vecchie
+    st.markdown(css_code, unsafe_allow_html=True)
+
+# ═══════════════════════════════════════════════════════════════════════
+# FUNZIONI DI PERSISTENZA
+# ═══════════════════════════════════════════════════════════════════════
 DATA_FILE = "volley_data.json"
 PHOTO_DIR = "player_photos"
 
@@ -608,9 +596,12 @@ def get_player_photo_html(player, size="120px"):
     if foto_b64:
         return '<img src="' + foto_b64 + '" class="player-photo-img" style="width:' + size + '; height:' + size + '; box-shadow: 0 0 30px ' + glow_color + '33, 0 4px 20px rgba(0,0,0,0.3);" alt="' + player["nome"] + '">'
     else:
-        emoji = {"palleggiatrice":"🏐", "schiacciatrice":"💥", "centrale":"🧱", "opposto":"⚡", "libero":"🛡️"}.get(player["ruolo"], "🏐")
+        emoji = {"palleggiatrice":"&#127952;", "schiacciatrice":"&#128165;", "centrale":"&#129521;", "opposto":"&#9889;", "libero":"&#128737;"}.get(player["ruolo"], "&#127952;")
         return '<div class="player-photo-placeholder" style="width:' + size + '; height:' + size + '; box-shadow: 0 0 30px ' + glow_color + '22;">' + emoji + '</div>'
 
+# ═══════════════════════════════════════════════════════════════════════
+# SESSION STATE
+# ═══════════════════════════════════════════════════════════════════════
 if "data" not in st.session_state:
     st.session_state.data = load_data()
     st.session_state.current_rot = 1
@@ -629,21 +620,24 @@ RUOLI_BADGE = {
 
 RUOLI_OPTIONS = ["palleggiatrice", "schiacciatrice", "centrale", "opposto", "libero"]
 
+# ═══════════════════════════════════════════════════════════════════════
 # HEADER
+# ═══════════════════════════════════════════════════════════════════════
 st.markdown("""
 <div style="text-align:center; margin-bottom:4px; position:relative;">
-    <div style="font-size:4.5rem; margin-bottom:-14px; filter: drop-shadow(0 0 20px rgba(255,107,107,0.4)) drop-shadow(0 0 40px rgba(72,219,251,0.2));">🏐</div>
+    <div style="font-size:4.5rem; margin-bottom:-14px; filter: drop-shadow(0 0 20px rgba(255,107,107,0.4)) drop-shadow(0 0 40px rgba(72,219,251,0.2));">&#127952;</div>
 </div>
 """, unsafe_allow_html=True)
 
 st.markdown('<div class="main-header">Volley Team Manager</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-header">' + data["squadra"]["categoria"] + ' — Stagione 2025/26</div>', unsafe_allow_html=True)
-
+st.markdown('<div class="sub-header">' + data["squadra"]["categoria"] + ' &mdash; Stagione 2025/26</div>', unsafe_allow_html=True)
 st.markdown('<div class="glow-divider"></div>', unsafe_allow_html=True)
 
-tab_roster, tab_tattica, tab_partita, tab_stats = st.tabs(["👥 Roster", "📐 Tattica", "🏆 Partita Live", "📊 Statistiche"])
+tab_roster, tab_tattica, tab_partita, tab_stats = st.tabs(["Roster", "Tattica", "Partita Live", "Statistiche"])
 
+# ═══════════════════════════════════════════════════════════════════════
 # TAB ROSTER
+# ═══════════════════════════════════════════════════════════════════════
 with tab_roster:
     col1, col2 = st.columns([3, 1])
     with col1:
@@ -719,6 +713,7 @@ with tab_roster:
     if not giocatrici_visibili:
         st.info("Nessuna giocatrice trovata. Prova a modificare i filtri o aggiungi una nuova giocatrice.")
 
+    # GRIGLIA CARD CON FOTO
     cols_per_row = 3
     for row_idx in range(0, len(giocatrici_visibili), cols_per_row):
         row_giocatrici = giocatrici_visibili[row_idx:row_idx + cols_per_row]
@@ -795,7 +790,9 @@ with tab_roster:
                     if g["note"]:
                         st.markdown("<div style='margin-top:14px; padding:14px; background:rgba(255,255,255,0.04); border-radius:12px; border-left:3px solid #feca57; box-shadow: 0 0 20px rgba(254,202,87,0.05);'><div style='font-size:11px; color:#7a7a8a; margin-bottom:6px; text-transform:uppercase; letter-spacing:1px;'>Note allenatore</div><div style='font-size:14px; color:#c0c0d0; line-height:1.6;'>" + g['note'] + "</div></div>", unsafe_allow_html=True)
 
+# ═══════════════════════════════════════════════════════════════════════
 # TAB TATTICA
+# ═══════════════════════════════════════════════════════════════════════
 with tab_tattica:
     st.markdown("<div style='font-size:24px; font-weight:700; color:#ffffff; margin-bottom:4px; letter-spacing:-0.5px;'>Formazione Tattica</div>", unsafe_allow_html=True)
     st.markdown("<div style='font-size:13px; color:#6a6a7a; margin-bottom:24px;'>Configura le 6 posizioni in campo e il libero</div>", unsafe_allow_html=True)
@@ -881,7 +878,9 @@ with tab_tattica:
     </div>
     """, unsafe_allow_html=True)
 
+# ═══════════════════════════════════════════════════════════════════════
 # TAB PARTITA LIVE
+# ═══════════════════════════════════════════════════════════════════════
 with tab_partita:
     match = st.session_state.match
 
@@ -999,3 +998,60 @@ with tab_partita:
                     with c_val:
                         st.markdown("<div style='text-align:center; font-weight:800; font-size:24px; color:#feca57; text-shadow: 0 0 15px rgba(254,202,87,0.3);'>" + str(s['muro']) + "</div>", unsafe_allow_html=True)
                 st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+
+# ═══════════════════════════════════════════════════════════════════════
+# TAB STATISTICHE
+# ═══════════════════════════════════════════════════════════════════════
+with tab_stats:
+    st.markdown("<div style='font-size:24px; font-weight:700; color:#ffffff; margin-bottom:4px; letter-spacing:-0.5px;'>Riepilogo Stagione</div>", unsafe_allow_html=True)
+    st.markdown("<div style='font-size:13px; color:#6a6a7a; margin-bottom:24px;'>Performance della squadra e classifica giocatrici</div>", unsafe_allow_html=True)
+
+    partite = data.get("partite", [])
+    vinte = sum(1 for p in partite if p.get("vinto"))
+    perse = len(partite) - vinte
+
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.markdown("<div class='stat-box'><div class='stat-number' style='color:#ffffff; text-shadow: 0 0 30px rgba(255,255,255,0.2);'>" + str(len(partite)) + "</div><div class='stat-label'>Partite giocate</div></div>", unsafe_allow_html=True)
+    with c2:
+        st.markdown("<div class='stat-box'><div class='stat-number' style='color:#34c759; text-shadow: 0 0 30px rgba(52,199,89,0.3);'>" + str(vinte) + "</div><div class='stat-label'>Vittorie</div></div>", unsafe_allow_html=True)
+    with c3:
+        st.markdown("<div class='stat-box'><div class='stat-number' style='color:#ff3b30; text-shadow: 0 0 30px rgba(255,59,48,0.3);'>" + str(perse) + "</div><div class='stat-label'>Sconfitte</div></div>", unsafe_allow_html=True)
+
+    st.markdown("<div class='glow-divider'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='font-size:20px; font-weight:700; color:#ffffff; margin-bottom:20px; letter-spacing:-0.5px;'>Classifica - Attacchi Positivi</div>", unsafe_allow_html=True)
+
+    stats_totali = data.get("stats_totali", {})
+    if not stats_totali:
+        st.info("Nessuna statistica registrata. Inizia una partita per raccogliere dati.")
+    else:
+        leaderboard = []
+        for pid_str, stats in stats_totali.items():
+            g = next((x for x in data["giocatrici"] if str(x["id"]) == pid_str), None)
+            if g:
+                leaderboard.append({
+                    "nome": g['nome'] + " #" + str(g['numero']),
+                    "ruolo": g['ruolo'],
+                    "attPos": stats.get("attPos", 0),
+                    "attNeg": stats.get("attNeg", 0),
+                    "muro": stats.get("muro", 0),
+                    "totale": stats.get("attPos", 0) + stats.get("muro", 0)
+                })
+
+        leaderboard.sort(key=lambda x: x["attPos"], reverse=True)
+        max_val = max((x["attPos"] for x in leaderboard), default=1)
+
+        for i, item in enumerate(leaderboard):
+            pct = (item["attPos"] / max_val) * 100
+            medal = "1." if i == 0 else "2." if i == 1 else "3." if i == 2 else str(i+1) + "."
+            st.markdown("<div class='leader-row'><div style='width:28px; font-size:16px;'>" + medal + "</div><div class='leader-name'>" + item['nome'] + "</div><div class='stat-bar-wrap'><div class='stat-bar' style='width:" + str(pct) + "%;'></div></div><div class='leader-val'>" + str(item['attPos']) + "</div></div>", unsafe_allow_html=True)
+
+        st.markdown("<div class='glow-divider'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='font-size:20px; font-weight:700; color:#ffffff; margin-bottom:20px; letter-spacing:-0.5px;'>Statistiche Dettagliate</div>", unsafe_allow_html=True)
+
+        import pandas as pd
+        df = pd.DataFrame(leaderboard)
+        if not df.empty:
+            df = df[["nome", "ruolo", "attPos", "attNeg", "muro", "totale"]]
+            df.columns = ["Giocatrice", "Ruolo", "Attacchi +", "Attacchi -", "Muri", "Totale"]
+            st.dataframe(df, use_container_width=True, hide_index=True, height=400)
