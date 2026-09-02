@@ -19,13 +19,6 @@ css_block = """
   /* Sfondo app */
   .stApp { background: linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 50%, #16213e 100%) !important; }
 
-  /* Header animato */
-  @keyframes gradientShift {
-    0% { background-position: 0% 50%; }
-    50% { background-position: 100% 50%; }
-    100% { background-position: 0% 50%; }
-  }
-
   /* Card base */
   .v-card {
     background: rgba(255,255,255,0.06);
@@ -35,6 +28,7 @@ css_block = """
     border: 1px solid rgba(255,255,255,0.1);
     box-shadow: 0 8px 32px rgba(0,0,0,0.4);
     transition: all 0.4s ease;
+    position: relative;
   }
   .v-card:hover {
     transform: translateY(-6px) scale(1.02);
@@ -133,33 +127,6 @@ css_block = """
   .v-statnum { font-size: 3rem; font-weight: 800; line-height: 1; }
   .v-statlab { font-size: 11px; color: #6a6a7a; margin-top: 8px; text-transform: uppercase; letter-spacing: 2px; }
 
-  /* Scoreboard */
-  .v-score {
-    background: rgba(255,255,255,0.05);
-    border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 24px;
-    padding: 30px;
-    text-align: center;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
-    position: relative;
-    overflow: hidden;
-  }
-  .v-score::after {
-    content: '';
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 2px;
-    background: linear-gradient(90deg, transparent, rgba(255,107,107,0.5), rgba(254,202,87,0.5), rgba(72,219,251,0.5), transparent);
-  }
-  .v-scorenum { font-size: 64px; font-weight: 800; line-height: 1; }
-  .v-scoreteam { font-size: 13px; font-weight: 600; color: #7a7a8a; text-transform: uppercase; letter-spacing: 3px; margin-bottom: 10px; }
-
-  @keyframes pulseGlow {
-    0%, 100% { box-shadow: 0 0 20px rgba(255,107,107,0.15), 0 8px 32px rgba(0,0,0,0.3); }
-    50% { box-shadow: 0 0 40px rgba(255,107,107,0.3), 0 8px 32px rgba(0,0,0,0.3); }
-  }
-  .v-pulse { animation: pulseGlow 3s ease-in-out infinite; }
-
   /* Divider */
   .v-divider {
     height: 1px;
@@ -222,6 +189,214 @@ css_block = """
   .v-dot:hover { transform: scale(1.2); box-shadow: 0 6px 25px rgba(255,107,107,0.7); }
   .v-dot-lib { background: linear-gradient(135deg, #48dbfb, #0abde3); box-shadow: 0 4px 18px rgba(72,219,251,0.5), 0 0 25px rgba(72,219,251,0.2); }
   .v-dot-lib:hover { box-shadow: 0 6px 25px rgba(72,219,251,0.7); }
+
+  /* ── CARD DIVERTENTI E COLORATE ── */
+  .fun-card {
+    border-radius: 24px;
+    overflow: hidden;
+    margin-bottom: 20px;
+    transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    position: relative;
+    cursor: pointer;
+  }
+  .fun-card:hover {
+    transform: translateY(-10px) rotate(-1deg);
+    box-shadow: 0 25px 60px rgba(0,0,0,0.5);
+  }
+
+  /* Colori per ruolo */
+  .fun-card-pal { background: linear-gradient(160deg, #1a237e 0%, #283593 40%, #3949ab 100%); border: 2px solid rgba(100,181,246,0.4); }
+  .fun-card-pal:hover { box-shadow: 0 25px 60px rgba(33,150,243,0.3); }
+  .fun-card-sch { background: linear-gradient(160deg, #880e4f 0%, #ad1457 40%, #c2185b 100%); border: 2px solid rgba(244,143,177,0.4); }
+  .fun-card-sch:hover { box-shadow: 0 25px 60px rgba(233,30,99,0.3); }
+  .fun-card-cen { background: linear-gradient(160deg, #1b5e20 0%, #2e7d32 40%, #388e3c 100%); border: 2px solid rgba(129,199,132,0.4); }
+  .fun-card-cen:hover { box-shadow: 0 25px 60px rgba(76,175,80,0.3); }
+  .fun-card-opp { background: linear-gradient(160deg, #4a148c 0%, #6a1b9a 40%, #7b1fa2 100%); border: 2px solid rgba(206,147,216,0.4); }
+  .fun-card-opp:hover { box-shadow: 0 25px 60px rgba(156,39,176,0.3); }
+  .fun-card-lib { background: linear-gradient(160deg, #e65100 0%, #ef6c00 40%, #f57c00 100%); border: 2px solid rgba(255,183,77,0.4); }
+  .fun-card-lib:hover { box-shadow: 0 25px 60px rgba(255,152,0,0.3); }
+
+  /* Testa card con gradiente */
+  .fun-head {
+    height: 140px;
+    position: relative;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding-bottom: 0;
+  }
+  .fun-head-pal { background: linear-gradient(135deg, rgba(33,150,243,0.3), rgba(25,118,210,0.1)); }
+  .fun-head-sch { background: linear-gradient(135deg, rgba(233,30,99,0.3), rgba(173,20,87,0.1)); }
+  .fun-head-cen { background: linear-gradient(135deg, rgba(76,175,80,0.3), rgba(46,125,50,0.1)); }
+  .fun-head-opp { background: linear-gradient(135deg, rgba(156,39,176,0.3), rgba(106,27,154,0.1)); }
+  .fun-head-lib { background: linear-gradient(135deg, rgba(255,152,0,0.3), rgba(230,81,0,0.1)); }
+
+  /* Cerchio foto grande */
+  .fun-photo {
+    width: 100px; height: 100px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 4px solid rgba(255,255,255,0.3);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+    position: absolute;
+    bottom: -50px;
+    z-index: 2;
+    transition: all 0.4s ease;
+  }
+  .fun-card:hover .fun-photo {
+    transform: scale(1.15);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+  }
+
+  .fun-photo-placeholder {
+    width: 100px; height: 100px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 3rem;
+    position: absolute;
+    bottom: -50px;
+    z-index: 2;
+    border: 4px solid rgba(255,255,255,0.3);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+    transition: all 0.4s ease;
+  }
+  .fun-card:hover .fun-photo-placeholder {
+    transform: scale(1.15);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+  }
+  .fun-ph-pal { background: linear-gradient(135deg, #42a5f5, #1e88e5); }
+  .fun-ph-sch { background: linear-gradient(135deg, #ec407a, #d81b60); }
+  .fun-ph-cen { background: linear-gradient(135deg, #66bb6a, #43a047); }
+  .fun-ph-opp { background: linear-gradient(135deg, #ab47bc, #8e24aa); }
+  .fun-ph-lib { background: linear-gradient(135deg, #ffa726, #fb8c00); }
+
+  /* Numero maglia grande */
+  .fun-jersey {
+    position: absolute;
+    top: 12px; right: 12px;
+    width: 48px; height: 48px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.15);
+    backdrop-filter: blur(10px);
+    color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; font-weight: 900;
+    border: 2px solid rgba(255,255,255,0.3);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+  }
+
+  /* Corpo card */
+  .fun-body {
+    padding: 60px 20px 20px 20px;
+    text-align: center;
+  }
+  .fun-name {
+    font-size: 20px;
+    font-weight: 800;
+    color: #ffffff;
+    margin-bottom: 2px;
+    letter-spacing: -0.5px;
+  }
+  .fun-ruolo {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-bottom: 10px;
+  }
+  .fun-ruolo-pal { color: #64b5f6; }
+  .fun-ruolo-sch { color: #f48fb1; }
+  .fun-ruolo-cen { color: #81c784; }
+  .fun-ruolo-opp { color: #ce93d8; }
+  .fun-ruolo-lib { color: #ffb74d; }
+
+  .fun-meta-row {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    margin: 12px 0;
+    font-size: 12px;
+    color: rgba(255,255,255,0.6);
+  }
+  .fun-meta-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  /* Stato badge */
+  .fun-stato {
+    display: inline-block;
+    padding: 4px 14px;
+    border-radius: 20px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-top: 8px;
+  }
+  .fun-stato-ok {
+    background: rgba(76,175,80,0.25);
+    color: #a5d6a7;
+    border: 1px solid rgba(76,175,80,0.4);
+  }
+  .fun-stato-inf {
+    background: rgba(244,67,54,0.25);
+    color: #ef9a9a;
+    border: 1px solid rgba(244,67,54,0.4);
+  }
+  .fun-stato-squ {
+    background: rgba(255,193,7,0.25);
+    color: #ffe082;
+    border: 1px solid rgba(255,193,7,0.4);
+  }
+
+  /* Note */
+  .fun-note {
+    font-size: 12px;
+    color: rgba(255,255,255,0.5);
+    margin-top: 10px;
+    font-style: italic;
+    line-height: 1.5;
+    padding: 0 8px;
+  }
+
+  /* Barra decorativa in basso */
+  .fun-bar {
+    height: 4px;
+    width: 60%;
+    margin: 16px auto 0;
+    border-radius: 2px;
+  }
+  .fun-bar-pal { background: linear-gradient(90deg, #42a5f5, #1e88e5); }
+  .fun-bar-sch { background: linear-gradient(90deg, #ec407a, #d81b60); }
+  .fun-bar-cen { background: linear-gradient(90deg, #66bb6a, #43a047); }
+  .fun-bar-opp { background: linear-gradient(90deg, #ab47bc, #8e24aa); }
+  .fun-bar-lib { background: linear-gradient(90deg, #ffa726, #fb8c00); }
+
+  /* Animazione float */
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-6px); }
+  }
+  .fun-float { animation: float 3s ease-in-out infinite; }
+
+  /* Punti forza/deboli in card */
+  .fun-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: center;
+    margin-top: 10px;
+  }
+  .fun-tag {
+    font-size: 10px;
+    padding: 3px 10px;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.1);
+    color: rgba(255,255,255,0.7);
+    border: 1px solid rgba(255,255,255,0.15);
+  }
 </style>
 """
 
@@ -298,12 +473,64 @@ def build_photo_html(player):
     else:
         return f'<div class="v-photo-placeholder">{get_emoji(player["ruolo"])}</div>'
 
+def get_fun_card_class(ruolo):
+    return {"palleggiatrice": "fun-card-pal", "schiacciatrice": "fun-card-sch", "centrale": "fun-card-cen", "opposto": "fun-card-opp", "libero": "fun-card-lib"}.get(ruolo, "fun-card-pal")
+
+def get_fun_head_class(ruolo):
+    return {"palleggiatrice": "fun-head-pal", "schiacciatrice": "fun-head-sch", "centrale": "fun-head-cen", "opposto": "fun-head-opp", "libero": "fun-head-lib"}.get(ruolo, "fun-head-pal")
+
+def get_fun_ph_class(ruolo):
+    return {"palleggiatrice": "fun-ph-pal", "schiacciatrice": "fun-ph-sch", "centrale": "fun-ph-cen", "opposto": "fun-ph-opp", "libero": "fun-ph-lib"}.get(ruolo, "fun-ph-pal")
+
+def get_fun_ruolo_class(ruolo):
+    return {"palleggiatrice": "fun-ruolo-pal", "schiacciatrice": "fun-ruolo-sch", "centrale": "fun-ruolo-cen", "opposto": "fun-ruolo-opp", "libero": "fun-ruolo-lib"}.get(ruolo, "fun-ruolo-pal")
+
+def get_fun_bar_class(ruolo):
+    return {"palleggiatrice": "fun-bar-pal", "schiacciatrice": "fun-bar-sch", "centrale": "fun-bar-cen", "opposto": "fun-bar-opp", "libero": "fun-bar-lib"}.get(ruolo, "fun-bar-pal")
+
+def build_fun_card_html(player):
+    foto_b64 = get_photo_base64(player.get("foto", ""))
+    card_cls = get_fun_card_class(player["ruolo"])
+    head_cls = get_fun_head_class(player["ruolo"])
+    ph_cls = get_fun_ph_class(player["ruolo"])
+    ruolo_cls = get_fun_ruolo_class(player["ruolo"])
+    bar_cls = get_fun_bar_class(player["ruolo"])
+    if foto_b64:
+        photo_html = f'<img src="{foto_b64}" class="fun-photo" alt="{player["nome"]}">'
+    else:
+        photo_html = f'<div class="fun-photo-placeholder {ph_cls}">{get_emoji(player["ruolo"])}</div>'
+    stato_cls = "fun-stato-ok" if player["stato"] == "attiva" else "fun-stato-inf" if player["stato"] == "infortunata" else "fun-stato-squ"
+    stato_txt = "Attiva" if player["stato"] == "attiva" else "Infortunata" if player["stato"] == "infortunata" else "Squalificata"
+    tags_html = ""
+    if player.get("forza"):
+        for f in player["forza"][:2]:
+            tags_html += f'<span class="fun-tag">{f["tag"]}</span>'
+    note_html = ""
+    if player.get("note"):
+        note_preview = player["note"][:60] + ("..." if len(player["note"]) > 60 else "")
+        note_html = f'<div class="fun-note">"{note_preview}"</div>'
+    return f'''<div class="fun-card {card_cls}">
+  <div class="fun-head {head_cls}">
+    <div class="fun-jersey">{player['numero']}</div>
+    {photo_html}
+  </div>
+  <div class="fun-body">
+    <div class="fun-name">{player['nome']} {player['cognome']}</div>
+    <div class="fun-ruolo {ruolo_cls}">{player['ruolo']}</div>
+    <div class="fun-meta-row">
+      <span class="fun-meta-item">📏 {player['altezza']}cm</span>
+    </div>
+    {tags_html}
+    {note_html}
+    <span class="fun-stato {stato_cls}">{stato_txt}</span>
+    <div class="fun-bar {bar_cls}"></div>
+  </div>
+</div>'''
+
 # Session state
 if "data" not in st.session_state:
     st.session_state.data = load_data()
     st.session_state.current_rot = 1
-    st.session_state.match = {"set": 1, "us": 0, "them": 0, "sets_us": 0, "sets_them": 0}
-    st.session_state.live_stats = {}
 
 data = st.session_state.data
 RUOLI_OPTIONS = ["palleggiatrice", "schiacciatrice", "centrale", "opposto", "libero"]
@@ -311,16 +538,36 @@ RUOLI_OPTIONS = ["palleggiatrice", "schiacciatrice", "centrale", "opposto", "lib
 # ═══════════════════════════════════════════════════════════════════════
 # HEADER
 # ═══════════════════════════════════════════════════════════════════════
-st.markdown("""
-<div style="text-align:center; margin-bottom:2px;">
-    <div style="font-size:4rem; margin-bottom:-10px;">🏐</div>
-</div>
-<div style="text-align:center; font-size:2.8rem; font-weight:800; background:linear-gradient(90deg,#ff6b6b,#feca57,#48dbfb,#ff9ff3); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; letter-spacing:-2px; margin-bottom:4px;">Volley Team Manager</div>
-<div style="text-align:center; font-size:1rem; color:#7a7a8a; margin-bottom:2rem; letter-spacing:2px; text-transform:uppercase;">""" + data["squadra"]["categoria"] + """ — Stagione 2025/26</div>
-<div class="v-divider"></div>
-""", unsafe_allow_html=True)
+# ═══════════════════════════════════════════════════════════════════════
+# HEADER CON EDITOR SQUADRA
+# ═══════════════════════════════════════════════════════════════════════
+with st.container():
+    st.markdown("""
+    <div style="text-align:center; margin-bottom:2px;">
+        <div style="font-size:4rem; margin-bottom:-10px;">🏐</div>
+    </div>
+    <div style="text-align:center; font-size:2.8rem; font-weight:800; background:linear-gradient(90deg,#ff6b6b,#feca57,#48dbfb,#ff9ff3); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; letter-spacing:-2px; margin-bottom:4px;">Volley Team Manager</div>
+    """, unsafe_allow_html=True)
 
-tab_roster, tab_tattica, tab_partita, tab_stats = st.tabs(["👥 Roster", "📐 Tattica", "🏆 Partita Live", "📊 Statistiche"])
+    # Editor nome squadra e categoria
+    c_team1, c_team2 = st.columns(2)
+    with c_team1:
+        nome_squadra = st.text_input("Nome squadra", value=data["squadra"].get("nome", "Volley Club"), key="team_name")
+        data["squadra"]["nome"] = nome_squadra
+    with c_team2:
+        categoria_squadra = st.text_input("Categoria", value=data["squadra"].get("categoria", "Serie B2 Femminile"), key="team_cat")
+        data["squadra"]["categoria"] = categoria_squadra
+
+    if st.button("💾 Salva squadra", type="primary", key="save_team"):
+        save_data(data)
+        st.success("Squadra salvata!")
+
+    st.markdown("""
+    <div style="text-align:center; font-size:1rem; color:#7a7a8a; margin-bottom:2rem; letter-spacing:2px; text-transform:uppercase;">""" + data["squadra"]["categoria"] + """ — Stagione 2025/26</div>
+    <div class="v-divider"></div>
+    """, unsafe_allow_html=True)
+
+tab_roster, tab_tattica = st.tabs(["👥 Roster", "📐 Tattica"])
 
 # TAB ROSTER
 with tab_roster:
@@ -408,26 +655,8 @@ with tab_roster:
                     note_preview = g["note"][:70] + ("..." if len(g["note"]) > 70 else "")
                     note_block = '<div class="v-note">' + note_preview + '</div>'
 
-                card = (
-                    '<div class="v-card">'
-                    '  <div class="v-photo-wrap">'
-                    '    <div class="v-jersey">' + str(g['numero']) + '</div>'
-                    '    ' + photo_html +
-                    '  </div>'
-                    '  <div class="v-body">'
-                    '    <div class="v-name">' + g['nome'] + ' ' + g['cognome'] + '</div>'
-                    '    <div class="v-meta">'
-                    '      <span class="v-badge ' + badge_cls + '">' + g['ruolo'] + '</span>'
-                    '      <span style="color:#505060;">|</span>'
-                    '      <span>' + str(g['altezza']) + 'cm</span>'
-                    '      <span style="color:#505060;">|</span>'
-                    '      <span class="v-badge ' + stato_cls + '">' + stato_txt + '</span>'
-                    '    </div>'
-                    '    ' + note_block +
-                    '  </div>'
-                    '</div>'
-                )
-                st.markdown(card, unsafe_allow_html=True)
+                card_html = build_fun_card_html(g)
+                st.markdown(card_html, unsafe_allow_html=True)
 
                 foto_key = "foto_" + str(g['id'])
                 uploaded = st.file_uploader("Foto", type=["jpg", "jpeg", "png", "webp"], key=foto_key, label_visibility="collapsed")
@@ -518,157 +747,3 @@ with tab_tattica:
     st.markdown(court_html, unsafe_allow_html=True)
 
     st.markdown("<div style='display:flex; gap:10px; flex-wrap:wrap; margin-top:24px; justify-content:center;'><span class='v-badge v-badge-pal'>Palleggiatrice</span><span class='v-badge v-badge-sch'>Schiacciatrice</span><span class='v-badge v-badge-cen'>Centrale</span><span class='v-badge v-badge-opp'>Opposto</span><span class='v-badge v-badge-lib'>Libero</span></div>", unsafe_allow_html=True)
-
-# TAB PARTITA LIVE
-with tab_partita:
-    match = st.session_state.match
-    st.markdown("<div style='font-size:24px; font-weight:700; color:#ffffff; margin-bottom:4px;'>Partita in corso</div>", unsafe_allow_html=True)
-    st.markdown("<div style='font-size:13px; color:#6a6a7a; margin-bottom:24px;'>Set " + str(match['set']) + " di 5 - Parziale: " + str(match['sets_us']) + "-" + str(match['sets_them']) + "</div>", unsafe_allow_html=True)
-
-    c1, c2, c3 = st.columns([2, 1, 2])
-    with c1:
-        st.markdown("<div class='v-score v-pulse'><div class='v-scoreteam'>LA NOSTRA</div><div class='v-scorenum' style='color:#ff6b6b; text-shadow:0 0 40px rgba(255,107,107,0.5);'>" + str(match['us']) + "</div></div>", unsafe_allow_html=True)
-    with c2:
-        st.markdown("<div style='text-align:center; padding-top:36px;'><div style='font-size:13px; color:#6a6a7a; font-weight:600; text-transform:uppercase; letter-spacing:2px;'>SET</div><div style='font-size:32px; font-weight:800; color:#feca57; text-shadow:0 0 20px rgba(254,202,87,0.3);'>" + str(match['set']) + "</div><div style='font-size:12px; color:#505060; margin-top:6px;'>(" + str(match['sets_us']) + "-" + str(match['sets_them']) + ")</div></div>", unsafe_allow_html=True)
-    with c3:
-        st.markdown("<div class='v-score'><div class='v-scoreteam'>AVVERSARIO</div><div class='v-scorenum' style='color:#48dbfb; text-shadow:0 0 40px rgba(72,219,251,0.5);'>" + str(match['them']) + "</div></div>", unsafe_allow_html=True)
-
-    st.markdown("<div style='height:20px;'></div>", unsafe_allow_html=True)
-    c_p1, c_p2, c_rot, c_to = st.columns(4)
-    with c_p1:
-        if st.button("PUNTO NOSTRO", type="primary", use_container_width=True):
-            match["us"] += 1
-            if match["us"] >= 25 and match["us"] - match["them"] >= 2:
-                end_set(True)
-            st.rerun()
-    with c_p2:
-        if st.button("PUNTO LORO", use_container_width=True):
-            match["them"] += 1
-            if match["them"] >= 25 and match["them"] - match["us"] >= 2:
-                end_set(False)
-            st.rerun()
-    with c_rot:
-        if st.button("ROTAZIONE", use_container_width=True):
-            f = data["formazione"]
-            f.append(f.pop(0))
-            save_data(data)
-            st.rerun()
-    with c_to:
-        if st.button("TIME-OUT", use_container_width=True):
-            st.toast("Time-out registrato!")
-
-    def end_set(we_won):
-        if we_won:
-            match["sets_us"] += 1
-            st.balloons()
-        else:
-            match["sets_them"] += 1
-        partita = {"data": datetime.now().isoformat(), "set": match["set"], "risultato": str(match["us"]) + "-" + str(match["them"]), "vinto": we_won, "stats": dict(st.session_state.live_stats)}
-        data["partite"].append(partita)
-        for pid, stats in st.session_state.live_stats.items():
-            pid_str = str(pid)
-            if pid_str not in data["stats_totali"]:
-                data["stats_totali"][pid_str] = {"attPos": 0, "attNeg": 0, "muro": 0, "battAce": 0}
-            for k, v in stats.items():
-                data["stats_totali"][pid_str][k] = data["stats_totali"][pid_str].get(k, 0) + v
-        match["set"] += 1
-        match["us"] = 0
-        match["them"] = 0
-        if match["sets_us"] == 3 or match["sets_them"] == 3:
-            winner = "VITTORIA!" if match["sets_us"] > match["sets_them"] else "SCONFITTA"
-            st.success(winner + " Risultato finale: " + str(match["sets_us"]) + "-" + str(match["sets_them"]))
-            match["set"] = 1
-            match["sets_us"] = 0
-            match["sets_them"] = 0
-            st.session_state.live_stats = {}
-        save_data(data)
-
-    st.markdown("<div class='v-divider'></div>", unsafe_allow_html=True)
-    st.markdown("<div style='font-size:20px; font-weight:700; color:#ffffff; margin-bottom:20px;'>Statistiche giocatrici in campo</div>", unsafe_allow_html=True)
-
-    on_field = [g for g in data["giocatrici"] if g["id"] in data["formazione"]]
-    if not on_field:
-        st.info("Nessuna giocatrice in campo. Configura la formazione nella scheda Tattica.")
-    else:
-        for g in on_field:
-            pid = g["id"]
-            if pid not in st.session_state.live_stats:
-                st.session_state.live_stats[pid] = {"attPos": 0, "attNeg": 0, "attErr": 0, "muro": 0, "battAce": 0, "battErr": 0}
-            s = st.session_state.live_stats[pid]
-            with st.container():
-                col_name, col_att_pos, col_att_neg, col_muro = st.columns([3, 1, 1, 1])
-                with col_name:
-                    st.markdown("<div style='font-size:17px; font-weight:700; color:#ffffff;'>#" + str(g['numero']) + " " + g['nome'] + "</div><div style='font-size:12px; color:#6a6a7a;'" + g['ruolo'] + "</div>", unsafe_allow_html=True)
-                with col_att_pos:
-                    c_btn, c_val = st.columns([1, 1])
-                    with c_btn:
-                        if st.button("+", key="ap_" + str(pid)):
-                            s["attPos"] += 1
-                            st.rerun()
-                    with c_val:
-                        st.markdown("<div style='text-align:center; font-weight:800; font-size:24px; color:#34c759; text-shadow:0 0 15px rgba(52,199,89,0.3);'>" + str(s['attPos']) + "</div>", unsafe_allow_html=True)
-                with col_att_neg:
-                    c_btn, c_val = st.columns([1, 1])
-                    with c_btn:
-                        if st.button("-", key="an_" + str(pid)):
-                            s["attNeg"] += 1
-                            st.rerun()
-                    with c_val:
-                        st.markdown("<div style='text-align:center; font-weight:800; font-size:24px; color:#ff3b30; text-shadow:0 0 15px rgba(255,59,48,0.3);'>" + str(s['attNeg']) + "</div>", unsafe_allow_html=True)
-                with col_muro:
-                    c_btn, c_val = st.columns([1, 1])
-                    with c_btn:
-                        if st.button("M", key="mu_" + str(pid)):
-                            s["muro"] += 1
-                            st.rerun()
-                    with c_val:
-                        st.markdown("<div style='text-align:center; font-weight:800; font-size:24px; color:#feca57; text-shadow:0 0 15px rgba(254,202,87,0.3);'>" + str(s['muro']) + "</div>", unsafe_allow_html=True)
-                st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
-
-# TAB STATISTICHE
-with tab_stats:
-    st.markdown("<div style='font-size:24px; font-weight:700; color:#ffffff; margin-bottom:4px;'>Riepilogo Stagione</div>", unsafe_allow_html=True)
-    st.markdown("<div style='font-size:13px; color:#6a6a7a; margin-bottom:24px;'>Performance della squadra e classifica giocatrici</div>", unsafe_allow_html=True)
-
-    partite = data.get("partite", [])
-    vinte = sum(1 for p in partite if p.get("vinto"))
-    perse = len(partite) - vinte
-
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        st.markdown("<div class='v-statbox'><div class='v-statnum' style='color:#ffffff; text-shadow:0 0 30px rgba(255,255,255,0.2);'>" + str(len(partite)) + "</div><div class='v-statlab'>Partite giocate</div></div>", unsafe_allow_html=True)
-    with c2:
-        st.markdown("<div class='v-statbox'><div class='v-statnum' style='color:#34c759; text-shadow:0 0 30px rgba(52,199,89,0.3);'>" + str(vinte) + "</div><div class='v-statlab'>Vittorie</div></div>", unsafe_allow_html=True)
-    with c3:
-        st.markdown("<div class='v-statbox'><div class='v-statnum' style='color:#ff3b30; text-shadow:0 0 30px rgba(255,59,48,0.3);'>" + str(perse) + "</div><div class='v-statlab'>Sconfitte</div></div>", unsafe_allow_html=True)
-
-    st.markdown("<div class='v-divider'></div>", unsafe_allow_html=True)
-    st.markdown("<div style='font-size:20px; font-weight:700; color:#ffffff; margin-bottom:20px;'>Classifica - Attacchi Positivi</div>", unsafe_allow_html=True)
-
-    stats_totali = data.get("stats_totali", {})
-    if not stats_totali:
-        st.info("Nessuna statistica registrata. Inizia una partita per raccogliere dati.")
-    else:
-        leaderboard = []
-        for pid_str, stats in stats_totali.items():
-            g = next((x for x in data["giocatrici"] if str(x["id"]) == pid_str), None)
-            if g:
-                leaderboard.append({"nome": g['nome'] + " #" + str(g['numero']), "ruolo": g['ruolo'], "attPos": stats.get("attPos", 0), "attNeg": stats.get("attNeg", 0), "muro": stats.get("muro", 0), "totale": stats.get("attPos", 0) + stats.get("muro", 0)})
-
-        leaderboard.sort(key=lambda x: x["attPos"], reverse=True)
-        max_val = max((x["attPos"] for x in leaderboard), default=1)
-
-        for i, item in enumerate(leaderboard):
-            pct = (item["attPos"] / max_val) * 100
-            medal = "1." if i == 0 else "2." if i == 1 else "3." if i == 2 else str(i+1) + "."
-            st.markdown("<div class='v-leader'><div style='width:28px; font-size:16px;'>" + medal + "</div><div class='v-leadername'>" + item['nome'] + "</div><div class='v-barwrap'><div class='v-bar' style='width:" + str(pct) + "%'></div></div><div class='v-leaderval'>" + str(item['attPos']) + "</div></div>", unsafe_allow_html=True)
-
-        st.markdown("<div class='v-divider'></div>", unsafe_allow_html=True)
-        st.markdown("<div style='font-size:20px; font-weight:700; color:#ffffff; margin-bottom:20px;'>Statistiche Dettagliate</div>", unsafe_allow_html=True)
-
-        import pandas as pd
-        df = pd.DataFrame(leaderboard)
-        if not df.empty:
-            df = df[["nome", "ruolo", "attPos", "attNeg", "muro", "totale"]]
-            df.columns = ["Giocatrice", "Ruolo", "Attacchi +", "Attacchi -", "Muri", "Totale"]
-            st.dataframe(df, use_container_width=True, hide_index=True, height=400)
