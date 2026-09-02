@@ -362,18 +362,12 @@ css_block = """
   }
 
   /* Barra decorativa in basso */
-  .fun-bar {
-    height: 4px;
-    width: 60%;
-    margin: 16px auto 0;
-    border-radius: 2px;
-    display: block;
-  }
-  .fun-bar-pal { background: linear-gradient(90deg, #42a5f5, #1e88e5); }
-  .fun-bar-sch { background: linear-gradient(90deg, #ec407a, #d81b60); }
-  .fun-bar-cen { background: linear-gradient(90deg, #66bb6a, #43a047); }
-  .fun-bar-opp { background: linear-gradient(90deg, #ab47bc, #8e24aa); }
-  .fun-bar-lib { background: linear-gradient(90deg, #ffa726, #fb8c00); }
+  .fun-bar { height: 4px !important; width: 60% !important; margin: 16px auto 0 !important; border-radius: 2px !important; display: block !important; background: linear-gradient(90deg, #888, #aaa) !important; }
+  .fun-bar-pal { background: linear-gradient(90deg, #42a5f5, #1e88e5) !important; }
+  .fun-bar-sch { background: linear-gradient(90deg, #ec407a, #d81b60) !important; }
+  .fun-bar-cen { background: linear-gradient(90deg, #66bb6a, #43a047) !important; }
+  .fun-bar-opp { background: linear-gradient(90deg, #ab47bc, #8e24aa) !important; }
+  .fun-bar-lib { background: linear-gradient(90deg, #ffa726, #fb8c00) !important; }
 
   /* Animazione float */
   @keyframes float {
@@ -526,6 +520,7 @@ def build_fun_card_html(player):
     <div style="margin-top:10px; margin-bottom:16px;">
       <span class="fun-stato {stato_cls}">{stato_txt}</span>
     </div>
+    <br>
     <div class="fun-bar {bar_cls}"></div>
   </div>
 </div>'''
