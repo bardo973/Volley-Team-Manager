@@ -204,17 +204,35 @@ css_block = """
     box-shadow: 0 25px 60px rgba(0,0,0,0.5);
   }
 
-  /* Colori per ruolo */
-  .fun-card-pal { background: linear-gradient(160deg, #1a237e 0%, #283593 40%, #3949ab 100%); border: 2px solid rgba(100,181,246,0.4); }
-  .fun-card-pal:hover { box-shadow: 0 25px 60px rgba(33,150,243,0.3); }
-  .fun-card-sch { background: linear-gradient(160deg, #880e4f 0%, #ad1457 40%, #c2185b 100%); border: 2px solid rgba(244,143,177,0.4); }
-  .fun-card-sch:hover { box-shadow: 0 25px 60px rgba(233,30,99,0.3); }
-  .fun-card-cen { background: linear-gradient(160deg, #1b5e20 0%, #2e7d32 40%, #388e3c 100%); border: 2px solid rgba(129,199,132,0.4); }
-  .fun-card-cen:hover { box-shadow: 0 25px 60px rgba(76,175,80,0.3); }
-  .fun-card-opp { background: linear-gradient(160deg, #4a148c 0%, #6a1b9a 40%, #7b1fa2 100%); border: 2px solid rgba(206,147,216,0.4); }
-  .fun-card-opp:hover { box-shadow: 0 25px 60px rgba(156,39,176,0.3); }
-  .fun-card-lib { background: linear-gradient(160deg, #e65100 0%, #ef6c00 40%, #f57c00 100%); border: 2px solid rgba(255,183,77,0.4); }
-  .fun-card-lib:hover { box-shadow: 0 25px 60px rgba(255,152,0,0.3); }
+  /* Colori per ruolo - BLU METALLIZZATO con contorno oro */
+  .fun-card {
+    background: linear-gradient(160deg, #0a1628 0%, #1a3a5c 30%, #0d2137 60%, #1a3a5c 100%) !important;
+    border: 2px solid rgba(212,175,55,0.6) !important;
+    box-shadow: 0 0 15px rgba(212,175,55,0.2), inset 0 0 30px rgba(10,22,40,0.5) !important;
+  }
+  .fun-card::before {
+    content: '';
+    position: absolute;
+    top: -2px; left: -2px; right: -2px; bottom: -2px;
+    background: linear-gradient(45deg, #d4af37, #f4d03f, #d4af37, #b8860b, #d4af37);
+    border-radius: 26px;
+    z-index: -1;
+    opacity: 0.4;
+    animation: borderGlow 3s ease-in-out infinite;
+  }
+  @keyframes borderGlow {
+    0%, 100% { opacity: 0.3; filter: brightness(1); }
+    50% { opacity: 0.7; filter: brightness(1.3); }
+  }
+  .fun-card:hover {
+    transform: translateY(-10px) rotate(-1deg);
+    box-shadow: 0 25px 60px rgba(0,0,0,0.5), 0 0 40px rgba(212,175,55,0.3) !important;
+    border-color: rgba(244,208,63,0.9) !important;
+  }
+  .fun-card-pal, .fun-card-sch, .fun-card-cen, .fun-card-opp, .fun-card-lib {
+    background: linear-gradient(160deg, #0a1628 0%, #1a3a5c 30%, #0d2137 60%, #1a3a5c 100%) !important;
+    border: 2px solid rgba(212,175,55,0.6) !important;
+  }
 
   /* Testa card con gradiente */
   .fun-head {
@@ -225,11 +243,9 @@ css_block = """
     justify-content: center;
     padding-bottom: 0;
   }
-  .fun-head-pal { background: linear-gradient(135deg, rgba(33,150,243,0.3), rgba(25,118,210,0.1)); }
-  .fun-head-sch { background: linear-gradient(135deg, rgba(233,30,99,0.3), rgba(173,20,87,0.1)); }
-  .fun-head-cen { background: linear-gradient(135deg, rgba(76,175,80,0.3), rgba(46,125,50,0.1)); }
-  .fun-head-opp { background: linear-gradient(135deg, rgba(156,39,176,0.3), rgba(106,27,154,0.1)); }
-  .fun-head-lib { background: linear-gradient(135deg, rgba(255,152,0,0.3), rgba(230,81,0,0.1)); }
+  .fun-head-pal, .fun-head-sch, .fun-head-cen, .fun-head-opp, .fun-head-lib {
+    background: linear-gradient(135deg, rgba(26,58,92,0.5), rgba(13,33,55,0.2), rgba(212,175,55,0.08)) !important;
+  }
 
   /* Cerchio foto grande */
   .fun-photo {
@@ -264,11 +280,11 @@ css_block = """
     transform: scale(1.15);
     box-shadow: 0 12px 40px rgba(0,0,0,0.5);
   }
-  .fun-ph-pal { background: linear-gradient(135deg, #42a5f5, #1e88e5); }
-  .fun-ph-sch { background: linear-gradient(135deg, #ec407a, #d81b60); }
-  .fun-ph-cen { background: linear-gradient(135deg, #66bb6a, #43a047); }
-  .fun-ph-opp { background: linear-gradient(135deg, #ab47bc, #8e24aa); }
-  .fun-ph-lib { background: linear-gradient(135deg, #ffa726, #fb8c00); }
+  .fun-ph-pal, .fun-ph-sch, .fun-ph-cen, .fun-ph-opp, .fun-ph-lib {
+    background: linear-gradient(135deg, #1a3a5c, #0d2137, #2c5f8a) !important;
+    border: 3px solid rgba(212,175,55,0.5) !important;
+    box-shadow: 0 0 20px rgba(212,175,55,0.2) !important;
+  }
 
   /* Numero maglia grande */
   .fun-jersey {
@@ -304,11 +320,10 @@ css_block = """
     letter-spacing: 2px;
     margin-bottom: 10px;
   }
-  .fun-ruolo-pal { color: #64b5f6; }
-  .fun-ruolo-sch { color: #f48fb1; }
-  .fun-ruolo-cen { color: #81c784; }
-  .fun-ruolo-opp { color: #ce93d8; }
-  .fun-ruolo-lib { color: #ffb74d; }
+  .fun-ruolo-pal, .fun-ruolo-sch, .fun-ruolo-cen, .fun-ruolo-opp, .fun-ruolo-lib {
+    color: #d4af37 !important;
+    text-shadow: 0 0 8px rgba(212,175,55,0.4) !important;
+  }
 
   .fun-meta-row {
     display: flex;
@@ -363,11 +378,10 @@ css_block = """
 
   /* Barra decorativa in basso */
   .fun-bar { height: 4px !important; width: 60% !important; margin: 16px auto 0 !important; border-radius: 2px !important; display: block !important; background: linear-gradient(90deg, #888, #aaa) !important; }
-  .fun-bar-pal { background: linear-gradient(90deg, #42a5f5, #1e88e5) !important; }
-  .fun-bar-sch { background: linear-gradient(90deg, #ec407a, #d81b60) !important; }
-  .fun-bar-cen { background: linear-gradient(90deg, #66bb6a, #43a047) !important; }
-  .fun-bar-opp { background: linear-gradient(90deg, #ab47bc, #8e24aa) !important; }
-  .fun-bar-lib { background: linear-gradient(90deg, #ffa726, #fb8c00) !important; }
+  .fun-bar-pal, .fun-bar-sch, .fun-bar-cen, .fun-bar-opp, .fun-bar-lib {
+    background: linear-gradient(90deg, #b8860b, #d4af37, #f4d03f, #d4af37, #b8860b) !important;
+    box-shadow: 0 0 10px rgba(212,175,55,0.4) !important;
+  }
 
   /* Animazione float */
   @keyframes float {
@@ -517,11 +531,10 @@ def build_fun_card_html(player):
     </div>
     {tags_html}
     {note_html}
-    <div style="margin-top:10px; margin-bottom:16px;">
+    <div style="margin-top:10px; margin-bottom:10px;">
       <span class="fun-stato {stato_cls}">{stato_txt}</span>
     </div>
-    <br>
-    <div class="fun-bar {bar_cls}"></div>
+    <div class="fun-bar {bar_cls}" style="margin-top:6px;"></div>
   </div>
 </div>'''
 
