@@ -377,7 +377,7 @@ css_block = """
   }
 
   /* Barra decorativa in basso */
-  .fun-bar { height: 4px !important; width: 60% !important; margin: 16px auto 0 !important; border-radius: 2px !important; display: block !important; background: linear-gradient(90deg, #888, #aaa) !important; }
+  .fun-bar { height: 4px !important; width: 60% !important; margin: 10px auto 0; border-radius: 2px !important; display: block !important; background: linear-gradient(90deg, #888, #aaa) !important; }
   .fun-bar-pal, .fun-bar-sch, .fun-bar-cen, .fun-bar-opp, .fun-bar-lib {
     background: linear-gradient(90deg, #b8860b, #d4af37, #f4d03f, #d4af37, #b8860b) !important;
     box-shadow: 0 0 10px rgba(212,175,55,0.4) !important;
@@ -534,7 +534,7 @@ def build_fun_card_html(player):
     <div style="margin-top:10px; margin-bottom:10px;">
       <span class="fun-stato {stato_cls}">{stato_txt}</span>
     </div>
-    <div class="fun-bar {bar_cls}" style="margin-top:6px;"></div>
+    <div class="fun-bar {bar_cls}" style="margin: 8px auto 0;"></div>
   </div>
 </div>'''
 
