@@ -12,120 +12,192 @@ st.set_page_config(
 )
 
 # ═══════════════════════════════════════════════════════════════════════
-# CSS INJECTED VIA st.html() - Streamlit 1.42+ compatible
+# CSS MIGLIORATO - Card native Streamlit + accenti per ruolo
 # ═══════════════════════════════════════════════════════════════════════
 css_block = """
 <style>
-  /* Sfondo app */
   .stApp { background: linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 50%, #16213e 100%) !important; }
 
-  /* Card base */
-  .v-card {
-    background: rgba(255,255,255,0.06);
-    border-radius: 20px;
-    overflow: hidden;
-    margin-bottom: 16px;
-    border: 1px solid rgba(255,255,255,0.1);
-    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
-    transition: all 0.4s ease;
-    position: relative;
-  }
-  .v-card:hover {
-    transform: translateY(-6px) scale(1.02);
-    box-shadow: 0 16px 48px rgba(0,0,0,0.5), 0 0 60px rgba(255,107,107,0.1);
-    border-color: rgba(255,107,107,0.3);
+  /* ACCENTI PER RUOLO */
+  :root {
+    --pal: #42a5f5; --pal-glow: rgba(66,165,245,0.35);
+    --sch: #ef5350; --sch-glow: rgba(239,83,80,0.35);
+    --cen: #66bb6a; --cen-glow: rgba(102,187,106,0.35);
+    --opp: #ab47bc; --opp-glow: rgba(171,71,188,0.35);
+    --lib: #ffa726; --lib-glow: rgba(255,167,38,0.35);
   }
 
-  /* Foto area */
-  .v-photo-wrap {
-    height: 180px;
-    background: linear-gradient(135deg, rgba(255,107,107,0.15), rgba(72,219,251,0.15));
+  /* Card container Streamlit hover */
+  div[data-testid="stVerticalBlock"] > div[data-testid="stVerticalBlockBorderWrapper"] {
+    transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  div[data-testid="stVerticalBlock"] > div[data-testid="stVerticalBlockBorderWrapper"]:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 20px 50px rgba(0,0,0,0.45) !important;
+  }
+
+  /* Header card con gradiente ruolo */
+  .card-header {
+    height: 100px;
+    border-radius: 12px 12px 0 0;
+    position: relative;
     display: flex;
-    align-items: center;
+    align-items: flex-end;
     justify-content: center;
-    position: relative;
+    margin: -16px -16px 0 -16px;
+    padding-bottom: 0;
   }
+  .card-header-pal { background: linear-gradient(135deg, rgba(66,165,245,0.25), rgba(25,55,95,0.4)); }
+  .card-header-sch { background: linear-gradient(135deg, rgba(239,83,80,0.25), rgba(80,25,25,0.4)); }
+  .card-header-cen { background: linear-gradient(135deg, rgba(102,187,106,0.25), rgba(25,60,25,0.4)); }
+  .card-header-opp { background: linear-gradient(135deg, rgba(171,71,188,0.25), rgba(60,25,70,0.4)); }
+  .card-header-lib { background: linear-gradient(135deg, rgba(255,167,38,0.25), rgba(70,50,15,0.4)); }
 
-  /* Foto cerchio */
-  .v-photo {
-    width: 110px; height: 110px;
+  /* Foto */
+  .card-photo {
+    width: 90px; height: 90px;
     border-radius: 50%;
     object-fit: cover;
-    border: 3px solid rgba(255,255,255,0.2);
-    box-shadow: 0 0 30px rgba(255,107,107,0.3);
-    transition: all 0.4s ease;
+    border: 3px solid rgba(255,255,255,0.25);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.4);
+    position: absolute;
+    bottom: -45px;
+    z-index: 5;
+    transition: all 0.3s ease;
   }
-  .v-card:hover .v-photo {
-    box-shadow: 0 0 50px rgba(255,107,107,0.5), 0 0 80px rgba(72,219,251,0.2);
-    transform: scale(1.08);
-  }
+  .card-photo:hover { transform: scale(1.1); }
 
-  /* Placeholder foto */
-  .v-photo-placeholder {
-    width: 110px; height: 110px;
+  .card-photo-placeholder {
+    width: 90px; height: 90px;
     border-radius: 50%;
-    background: linear-gradient(135deg, rgba(255,107,107,0.2), rgba(72,219,251,0.2));
     display: flex; align-items: center; justify-content: center;
-    font-size: 2.5rem;
-    border: 3px solid rgba(255,255,255,0.15);
-    box-shadow: 0 0 25px rgba(255,107,107,0.2);
+    font-size: 2.2rem;
+    position: absolute;
+    bottom: -45px;
+    z-index: 5;
+    border: 3px solid rgba(255,255,255,0.2);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.3);
   }
+  .ph-pal { background: linear-gradient(135deg, #1565c0, #42a5f5); }
+  .ph-sch { background: linear-gradient(135deg, #c62828, #ef5350); }
+  .ph-cen { background: linear-gradient(135deg, #2e7d32, #66bb6a); }
+  .ph-opp { background: linear-gradient(135deg, #6a1b9a, #ab47bc); }
+  .ph-lib { background: linear-gradient(135deg, #ef6c00, #ffa726); }
 
   /* Numero maglia */
-  .v-jersey {
+  .card-jersey {
     position: absolute;
     top: 10px; right: 10px;
-    width: 38px; height: 38px;
+    width: 36px; height: 36px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #ff6b6b, #feca57);
-    color: #0a0a0f;
+    background: rgba(0,0,0,0.35);
+    backdrop-filter: blur(8px);
+    color: #fff;
     display: flex; align-items: center; justify-content: center;
-    font-size: 14px; font-weight: 800;
-    box-shadow: 0 4px 15px rgba(255,107,107,0.5);
-    border: 2px solid rgba(255,255,255,0.3);
+    font-size: 15px; font-weight: 900;
+    border: 2px solid rgba(255,255,255,0.25);
   }
 
   /* Corpo card */
-  .v-body { padding: 14px 18px 18px 18px; }
-  .v-name { font-size: 17px; font-weight: 700; color: #ffffff; margin-bottom: 4px; }
-  .v-meta { font-size: 11px; color: #8a8a9a; margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
-
-  /* Badge */
-  .v-badge {
-    display: inline-block;
-    padding: 3px 10px;
-    border-radius: 12px;
-    font-size: 0.65rem;
+  .card-body {
+    padding: 52px 8px 8px 8px;
+    text-align: center;
+  }
+  .card-name {
+    font-size: 17px;
+    font-weight: 800;
+    color: #ffffff;
+    letter-spacing: -0.3px;
+    margin-bottom: 2px;
+  }
+  .card-ruolo {
+    font-size: 11px;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 2px;
+    margin-bottom: 8px;
   }
-  .v-badge-pal { background: rgba(33,150,243,0.2); color: #64b5f6; border: 1px solid rgba(33,150,243,0.3); }
-  .v-badge-sch { background: rgba(233,30,99,0.2); color: #f48fb1; border: 1px solid rgba(233,30,99,0.3); }
-  .v-badge-cen { background: rgba(76,175,80,0.2); color: #81c784; border: 1px solid rgba(76,175,80,0.3); }
-  .v-badge-opp { background: rgba(156,39,176,0.2); color: #ce93d8; border: 1px solid rgba(156,39,176,0.3); }
-  .v-badge-lib { background: rgba(255,152,0,0.2); color: #ffb74d; border: 1px solid rgba(255,152,0,0.3); }
-  .v-badge-ok { background: rgba(76,175,80,0.15); color: #81c784; border: 1px solid rgba(76,175,80,0.25); }
-  .v-badge-inf { background: rgba(244,67,54,0.15); color: #ef5350; border: 1px solid rgba(244,67,54,0.25); }
+  .ruolo-pal { color: #90caf9; text-shadow: 0 0 8px var(--pal-glow); }
+  .ruolo-sch { color: #ef9a9a; text-shadow: 0 0 8px var(--sch-glow); }
+  .ruolo-cen { color: #a5d6a7; text-shadow: 0 0 8px var(--cen-glow); }
+  .ruolo-opp { color: #ce93d8; text-shadow: 0 0 8px var(--opp-glow); }
+  .ruolo-lib { color: #ffcc80; text-shadow: 0 0 8px var(--lib-glow); }
 
-  .v-note { font-size: 11px; color: #6a6a7a; margin-top: 8px; font-style: italic; line-height: 1.4; }
+  .card-meta {
+    font-size: 12px;
+    color: rgba(255,255,255,0.55);
+    margin-bottom: 10px;
+  }
+
+  /* Badge stato */
+  .badge-stato {
+    display: inline-block;
+    padding: 3px 12px;
+    border-radius: 20px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .stato-ok  { background: rgba(76,175,80,0.2);  color: #a5d6a7; border: 1px solid rgba(76,175,80,0.35); }
+  .stato-inf { background: rgba(244,67,54,0.2);  color: #ef9a9a; border: 1px solid rgba(244,67,54,0.35); }
+  .stato-squ { background: rgba(255,193,7,0.2);   color: #ffe082; border: 1px solid rgba(255,193,7,0.35); }
+
+  /* Tag forza */
+  .tag-box {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    justify-content: center;
+    margin: 8px 0;
+  }
+  .tag {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.07);
+    color: rgba(255,255,255,0.65);
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+
+  /* Note */
+  .card-note {
+    font-size: 11px;
+    color: rgba(255,255,255,0.45);
+    font-style: italic;
+    margin-top: 8px;
+    line-height: 1.4;
+    padding: 0 4px;
+  }
+
+  /* Barra colore ruolo in fondo */
+  .card-bar {
+    height: 3px;
+    width: 50%;
+    margin: 12px auto 0;
+    border-radius: 2px;
+  }
+  .bar-pal { background: linear-gradient(90deg, #1565c0, #42a5f5); box-shadow: 0 0 10px var(--pal-glow); }
+  .bar-sch { background: linear-gradient(90deg, #c62828, #ef5350); box-shadow: 0 0 10px var(--sch-glow); }
+  .bar-cen { background: linear-gradient(90deg, #2e7d32, #66bb6a); box-shadow: 0 0 10px var(--cen-glow); }
+  .bar-opp { background: linear-gradient(90deg, #6a1b9a, #ab47bc); box-shadow: 0 0 10px var(--opp-glow); }
+  .bar-lib { background: linear-gradient(90deg, #ef6c00, #ffa726); box-shadow: 0 0 10px var(--lib-glow); }
 
   /* Stat box */
   .v-statbox {
-    background: rgba(255,255,255,0.05);
-    border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 20px;
-    padding: 24px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 16px;
+    padding: 20px;
     text-align: center;
-    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
     transition: all 0.3s ease;
   }
   .v-statbox:hover {
     transform: translateY(-4px);
-    box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 0 40px rgba(255,107,107,0.08);
+    background: rgba(255,255,255,0.06);
   }
-  .v-statnum { font-size: 3rem; font-weight: 800; line-height: 1; }
-  .v-statlab { font-size: 11px; color: #6a6a7a; margin-top: 8px; text-transform: uppercase; letter-spacing: 2px; }
+  .v-statnum { font-size: 2.6rem; font-weight: 800; line-height: 1; }
+  .v-statlab { font-size: 11px; color: #6a6a7a; margin-top: 6px; text-transform: uppercase; letter-spacing: 2px; }
 
   /* Divider */
   .v-divider {
@@ -135,33 +207,7 @@ css_block = """
     border: none;
   }
 
-  /* Leaderboard */
-  .v-leader {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 8px;
-    padding: 8px 12px;
-    background: rgba(255,255,255,0.03);
-    border-radius: 10px;
-    transition: all 0.2s ease;
-  }
-  .v-leader:hover {
-    background: rgba(255,255,255,0.06);
-    box-shadow: 0 2px 12px rgba(0,0,0,0.2);
-  }
-  .v-leadername { width: 130px; font-size: 13px; font-weight: 600; color: #ffffff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .v-leaderval { width: 32px; text-align: right; font-size: 14px; font-weight: 700; color: #feca57; }
-
-  /* Barra stat */
-  .v-barwrap { flex: 1; height: 10px; background: rgba(255,255,255,0.06); border-radius: 5px; overflow: hidden; }
-  .v-bar { height: 100%; background: linear-gradient(90deg, #ff6b6b, #feca57, #48dbfb); border-radius: 5px; transition: width 0.6s ease; }
-
-  /* Stelle */
-  .v-star-on { color: #feca57; text-shadow: 0 0 6px rgba(254,202,87,0.4); }
-  .v-star-off { color: rgba(255,255,255,0.1); }
-
-  /* Campo */
+  /* Court */
   .v-court {
     position: relative;
     width: 320px;
@@ -169,11 +215,10 @@ css_block = """
     border: 2px solid rgba(255,255,255,0.15);
     border-radius: 14px;
     margin: 0 auto;
-    background: linear-gradient(180deg, rgba(255,107,107,0.05), rgba(72,219,251,0.05));
-    box-shadow: 0 0 50px rgba(255,107,107,0.06), inset 0 0 50px rgba(0,0,0,0.2);
+    background: linear-gradient(180deg, rgba(255,107,107,0.04), rgba(72,219,251,0.04));
   }
-  .v-courtline { position: absolute; left: 0; right: 0; border-top: 2px dashed rgba(255,255,255,0.12); }
-  .v-courtnet { position: absolute; top: 50%; left: 0; right: 0; border-top: 3px solid rgba(255,255,255,0.35); box-shadow: 0 0 15px rgba(255,255,255,0.15); }
+  .v-courtline { position: absolute; left: 5%; right: 5%; border-top: 2px dashed rgba(255,255,255,0.12); }
+  .v-courtnet  { position: absolute; top: 50%; left: 0; right: 0; border-top: 3px solid rgba(255,255,255,0.35); box-shadow: 0 0 15px rgba(255,255,255,0.15); }
   .v-dot {
     position: absolute;
     width: 44px; height: 44px;
@@ -182,234 +227,25 @@ css_block = """
     color: #0a0a0f;
     display: flex; align-items: center; justify-content: center;
     font-size: 13px; font-weight: 800;
-    box-shadow: 0 4px 18px rgba(255,107,107,0.5), 0 0 25px rgba(255,107,107,0.2);
+    box-shadow: 0 4px 18px rgba(255,107,107,0.5);
     border: 2px solid rgba(255,255,255,0.25);
     transition: all 0.3s ease;
+    transform: translate(-50%, -50%);
   }
-  .v-dot:hover { transform: scale(1.2); box-shadow: 0 6px 25px rgba(255,107,107,0.7); }
-  .v-dot-lib { background: linear-gradient(135deg, #48dbfb, #0abde3); box-shadow: 0 4px 18px rgba(72,219,251,0.5), 0 0 25px rgba(72,219,251,0.2); }
-  .v-dot-lib:hover { box-shadow: 0 6px 25px rgba(72,219,251,0.7); }
+  .v-dot:hover { transform: translate(-50%, -50%) scale(1.2); }
+  .v-dot-lib { background: linear-gradient(135deg, #48dbfb, #0abde3); box-shadow: 0 4px 18px rgba(72,219,251,0.5); }
+  .v-dot-lib:hover { transform: translate(-50%, -50%) scale(1.2); box-shadow: 0 6px 25px rgba(72,219,251,0.7); }
 
-  /* ── CARD DIVERTENTI E COLORATE ── */
-  .fun-card {
-    border-radius: 24px;
-    overflow: hidden;
-    margin-bottom: 20px;
-    transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-    position: relative;
-    cursor: pointer;
-  }
-  .fun-card:hover {
-    transform: translateY(-10px) rotate(-1deg);
-    box-shadow: 0 25px 60px rgba(0,0,0,0.5);
-  }
+  /* Stelle */
+  .v-star-on { color: #feca57; text-shadow: 0 0 6px rgba(254,202,87,0.4); }
+  .v-star-off { color: rgba(255,255,255,0.1); }
 
-  /* Colori per ruolo - BLU METALLIZZATO con contorno oro */
-  .fun-card {
-    background: linear-gradient(160deg, #0a1628 0%, #1a3a5c 30%, #0d2137 60%, #1a3a5c 100%) !important;
-    border: 2px solid rgba(212,175,55,0.6) !important;
-    box-shadow: 0 0 15px rgba(212,175,55,0.2), inset 0 0 30px rgba(10,22,40,0.5) !important;
-  }
-  .fun-card::before {
-    content: '';
-    position: absolute;
-    top: -2px; left: -2px; right: -2px; bottom: -2px;
-    background: linear-gradient(45deg, #d4af37, #f4d03f, #d4af37, #b8860b, #d4af37);
-    border-radius: 26px;
-    z-index: -1;
-    opacity: 0.4;
-    animation: borderGlow 3s ease-in-out infinite;
-  }
-  @keyframes borderGlow {
-    0%, 100% { opacity: 0.3; filter: brightness(1); }
-    50% { opacity: 0.7; filter: brightness(1.3); }
-  }
-  .fun-card:hover {
-    transform: translateY(-10px) rotate(-1deg);
-    box-shadow: 0 25px 60px rgba(0,0,0,0.5), 0 0 40px rgba(212,175,55,0.3) !important;
-    border-color: rgba(244,208,63,0.9) !important;
-  }
-  .fun-card-pal, .fun-card-sch, .fun-card-cen, .fun-card-opp, .fun-card-lib {
-    background: linear-gradient(160deg, #0a1628 0%, #1a3a5c 30%, #0d2137 60%, #1a3a5c 100%) !important;
-    border: 2px solid rgba(212,175,55,0.6) !important;
-  }
-
-  /* Testa card con gradiente */
-  .fun-head {
-    height: 140px;
-    position: relative;
-    display: flex;
-    align-items: flex-end;
-    justify-content: center;
-    padding-bottom: 0;
-  }
-  .fun-head-pal, .fun-head-sch, .fun-head-cen, .fun-head-opp, .fun-head-lib {
-    background: linear-gradient(135deg, rgba(26,58,92,0.5), rgba(13,33,55,0.2), rgba(212,175,55,0.08)) !important;
-  }
-
-  /* Cerchio foto grande */
-  .fun-photo {
-    width: 100px; height: 100px;
-    border-radius: 50%;
-    object-fit: cover;
-    border: 4px solid rgba(255,255,255,0.3);
-    box-shadow: 0 8px 30px rgba(0,0,0,0.4);
-    position: absolute;
-    bottom: -50px;
-    z-index: 2;
-    transition: all 0.4s ease;
-  }
-  .fun-card:hover .fun-photo {
-    transform: scale(1.15);
-    box-shadow: 0 12px 40px rgba(0,0,0,0.5);
-  }
-
-  .fun-photo-placeholder {
-    width: 100px; height: 100px;
-    border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 3rem;
-    position: absolute;
-    bottom: -50px;
-    z-index: 2;
-    border: 4px solid rgba(255,255,255,0.3);
-    box-shadow: 0 8px 30px rgba(0,0,0,0.4);
-    transition: all 0.4s ease;
-  }
-  .fun-card:hover .fun-photo-placeholder {
-    transform: scale(1.15);
-    box-shadow: 0 12px 40px rgba(0,0,0,0.5);
-  }
-  .fun-ph-pal, .fun-ph-sch, .fun-ph-cen, .fun-ph-opp, .fun-ph-lib {
-    background: linear-gradient(135deg, #1a3a5c, #0d2137, #2c5f8a) !important;
-    border: 3px solid rgba(212,175,55,0.5) !important;
-    box-shadow: 0 0 20px rgba(212,175,55,0.2) !important;
-  }
-
-  /* Numero maglia grande */
-  .fun-jersey {
-    position: absolute;
-    top: 12px; right: 12px;
-    width: 48px; height: 48px;
-    border-radius: 50%;
-    background: rgba(255,255,255,0.15);
-    backdrop-filter: blur(10px);
-    color: #fff;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 18px; font-weight: 900;
-    border: 2px solid rgba(255,255,255,0.3);
-    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-  }
-
-  /* Corpo card */
-  .fun-body {
-    padding: 60px 20px 20px 20px;
-    text-align: center;
-  }
-  .fun-name {
-    font-size: 20px;
-    font-weight: 800;
-    color: #ffffff;
-    margin-bottom: 2px;
-    letter-spacing: -0.5px;
-  }
-  .fun-ruolo {
-    font-size: 12px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 2px;
-    margin-bottom: 10px;
-  }
-  .fun-ruolo-pal, .fun-ruolo-sch, .fun-ruolo-cen, .fun-ruolo-opp, .fun-ruolo-lib {
-    color: #d4af37 !important;
-    text-shadow: 0 0 8px rgba(212,175,55,0.4) !important;
-  }
-
-  .fun-meta-row {
-    display: flex;
-    justify-content: center;
-    gap: 16px;
-    margin: 12px 0;
-    font-size: 12px;
-    color: rgba(255,255,255,0.6);
-  }
-  .fun-meta-item {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-  }
-
-  /* Stato badge */
-  .fun-stato {
-    display: inline-block;
-    padding: 4px 14px;
-    border-radius: 20px;
-    font-size: 10px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    margin-top: 8px;
-  }
-  .fun-stato-ok {
-    background: rgba(76,175,80,0.25);
-    color: #a5d6a7;
-    border: 1px solid rgba(76,175,80,0.4);
-  }
-  .fun-stato-inf {
-    background: rgba(244,67,54,0.25);
-    color: #ef9a9a;
-    border: 1px solid rgba(244,67,54,0.4);
-  }
-  .fun-stato-squ {
-    background: rgba(255,193,7,0.25);
-    color: #ffe082;
-    border: 1px solid rgba(255,193,7,0.4);
-  }
-
-  /* Note */
-  .fun-note {
-    font-size: 12px;
-    color: rgba(255,255,255,0.5);
-    margin-top: 10px;
-    font-style: italic;
-    line-height: 1.5;
-    padding: 0 8px;
-  }
-
-  /* Barra decorativa in basso */
-  .fun-bar { height: 4px !important; width: 60% !important; margin: 10px auto 0; border-radius: 2px !important; display: block !important; background: linear-gradient(90deg, #888, #aaa) !important; }
-  .fun-bar-pal, .fun-bar-sch, .fun-bar-cen, .fun-bar-opp, .fun-bar-lib {
-    background: linear-gradient(90deg, #b8860b, #d4af37, #f4d03f, #d4af37, #b8860b) !important;
-    box-shadow: 0 0 10px rgba(212,175,55,0.4) !important;
-  }
-
-  /* Animazione float */
-  @keyframes float {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-6px); }
-  }
-  .fun-float { animation: float 3s ease-in-out infinite; }
-
-  /* Punti forza/deboli in card */
-  .fun-tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    justify-content: center;
-    margin-top: 10px;
-  }
-  .fun-tag {
-    font-size: 10px;
-    padding: 3px 10px;
-    border-radius: 10px;
-    background: rgba(255,255,255,0.1);
-    color: rgba(255,255,255,0.7);
-    border: 1px solid rgba(255,255,255,0.15);
-  }
+  /* Nascondi label file uploader */
+  div[data-testid="stFileUploader"] > label { display: none !important; }
+  div[data-testid="stFileUploader"] { margin-top: -8px; }
 </style>
 """
 
-# Inietta CSS con st.html() - funziona con Streamlit 1.42+
 try:
     st.html(css_block)
 except:
@@ -469,76 +305,20 @@ def get_photo_base64(filepath):
     except:
         return ""
 
-def get_badge_class(ruolo):
-    return {"palleggiatrice": "v-badge-pal", "schiacciatrice": "v-badge-sch", "centrale": "v-badge-cen", "opposto": "v-badge-opp", "libero": "v-badge-lib"}.get(ruolo, "v-badge-pal")
-
 def get_emoji(ruolo):
     return {"palleggiatrice": "🏐", "schiacciatrice": "💥", "centrale": "🧱", "opposto": "⚡", "libero": "🛡️"}.get(ruolo, "🏐")
 
-def build_photo_html(player):
-    foto_b64 = get_photo_base64(player.get("foto", ""))
-    if foto_b64:
-        return f'<img src="{foto_b64}" class="v-photo" alt="{player["nome"]}">'
-    else:
-        return f'<div class="v-photo-placeholder">{get_emoji(player["ruolo"])}</div>'
+ROLE_MAP = {
+    "palleggiatrice": ("card-header-pal", "ph-pal", "ruolo-pal", "bar-pal"),
+    "schiacciatrice": ("card-header-sch", "ph-sch", "ruolo-sch", "bar-sch"),
+    "centrale":       ("card-header-cen", "ph-cen", "ruolo-cen", "bar-cen"),
+    "opposto":        ("card-header-opp", "ph-opp", "ruolo-opp", "bar-opp"),
+    "libero":         ("card-header-lib", "ph-lib", "ruolo-lib", "bar-lib"),
+}
 
-def get_fun_card_class(ruolo):
-    return {"palleggiatrice": "fun-card-pal", "schiacciatrice": "fun-card-sch", "centrale": "fun-card-cen", "opposto": "fun-card-opp", "libero": "fun-card-lib"}.get(ruolo, "fun-card-pal")
-
-def get_fun_head_class(ruolo):
-    return {"palleggiatrice": "fun-head-pal", "schiacciatrice": "fun-head-sch", "centrale": "fun-head-cen", "opposto": "fun-head-opp", "libero": "fun-head-lib"}.get(ruolo, "fun-head-pal")
-
-def get_fun_ph_class(ruolo):
-    return {"palleggiatrice": "fun-ph-pal", "schiacciatrice": "fun-ph-sch", "centrale": "fun-ph-cen", "opposto": "fun-ph-opp", "libero": "fun-ph-lib"}.get(ruolo, "fun-ph-pal")
-
-def get_fun_ruolo_class(ruolo):
-    return {"palleggiatrice": "fun-ruolo-pal", "schiacciatrice": "fun-ruolo-sch", "centrale": "fun-ruolo-cen", "opposto": "fun-ruolo-opp", "libero": "fun-ruolo-lib"}.get(ruolo, "fun-ruolo-pal")
-
-def get_fun_bar_class(ruolo):
-    return {"palleggiatrice": "fun-bar-pal", "schiacciatrice": "fun-bar-sch", "centrale": "fun-bar-cen", "opposto": "fun-bar-opp", "libero": "fun-bar-lib"}.get(ruolo, "fun-bar-pal")
-
-def build_fun_card_html(player):
-    foto_b64 = get_photo_base64(player.get("foto", ""))
-    card_cls = get_fun_card_class(player["ruolo"])
-    head_cls = get_fun_head_class(player["ruolo"])
-    ph_cls = get_fun_ph_class(player["ruolo"])
-    ruolo_cls = get_fun_ruolo_class(player["ruolo"])
-    bar_cls = get_fun_bar_class(player["ruolo"])
-    if foto_b64:
-        photo_html = f'<img src="{foto_b64}" class="fun-photo" alt="{player["nome"]}">'
-    else:
-        photo_html = f'<div class="fun-photo-placeholder {ph_cls}">{get_emoji(player["ruolo"])}</div>'
-    stato_cls = "fun-stato-ok" if player["stato"] == "attiva" else "fun-stato-inf" if player["stato"] == "infortunata" else "fun-stato-squ"
-    stato_txt = "Attiva" if player["stato"] == "attiva" else "Infortunata" if player["stato"] == "infortunata" else "Squalificata"
-    tags_html = ""
-    if player.get("forza"):
-        for f in player["forza"][:2]:
-            tags_html += f'<span class="fun-tag">{f["tag"]}</span>'
-    note_html = ""
-    if player.get("note"):
-        note_preview = player["note"][:60] + ("..." if len(player["note"]) > 60 else "")
-        note_html = f'<div class="fun-note">"{note_preview}"</div>'
-    return f'''<div class="fun-card {card_cls}">
-  <div class="fun-head {head_cls}">
-    <div class="fun-jersey">{player['numero']}</div>
-    {photo_html}
-  </div>
-  <div class="fun-body">
-    <div class="fun-name">{player['nome']} {player['cognome']}</div>
-    <div class="fun-ruolo {ruolo_cls}">{player['ruolo']}</div>
-    <div class="fun-meta-row">
-      <span class="fun-meta-item">📏 {player['altezza']}cm</span>
-    </div>
-    {tags_html}
-    {note_html}
-    <div style="margin-top:10px; margin-bottom:10px;">
-      <span class="fun-stato {stato_cls}">{stato_txt}</span>
-    </div>
-    <div class="fun-bar {bar_cls}" style="margin: 8px auto 0;"></div>
-  </div>
-</div>'''
-
-# Session state
+# ═══════════════════════════════════════════════════════════════════════
+# SESSION STATE
+# ═══════════════════════════════════════════════════════════════════════
 if "data" not in st.session_state:
     st.session_state.data = load_data()
     st.session_state.current_rot = 1
@@ -549,9 +329,6 @@ RUOLI_OPTIONS = ["palleggiatrice", "schiacciatrice", "centrale", "opposto", "lib
 # ═══════════════════════════════════════════════════════════════════════
 # HEADER
 # ═══════════════════════════════════════════════════════════════════════
-# ═══════════════════════════════════════════════════════════════════════
-# HEADER CON EDITOR SQUADRA
-# ═══════════════════════════════════════════════════════════════════════
 with st.container():
     st.markdown("""
     <div style="text-align:center; margin-bottom:2px;">
@@ -560,7 +337,6 @@ with st.container():
     <div style="text-align:center; font-size:2.8rem; font-weight:800; background:linear-gradient(90deg,#ff6b6b,#feca57,#48dbfb,#ff9ff3); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; letter-spacing:-2px; margin-bottom:4px;">Volley Team Manager</div>
     """, unsafe_allow_html=True)
 
-    # Editor nome squadra e categoria
     c_team1, c_team2 = st.columns(2)
     with c_team1:
         nome_squadra = st.text_input("Nome squadra", value=data["squadra"].get("nome", "Volley Club"), key="team_name")
@@ -578,22 +354,47 @@ with st.container():
     <div class="v-divider"></div>
     """, unsafe_allow_html=True)
 
+# ═══════════════════════════════════════════════════════════════════════
+# STATISTICHE RAPIDE
+# ═══════════════════════════════════════════════════════════════════════
+attive = sum(1 for g in data["giocatrici"] if g["stato"] == "attiva")
+infort = sum(1 for g in data["giocatrici"] if g["stato"] == "infortunata")
+tot = len(data["giocatrici"])
+alt_media = int(sum(g["altezza"] for g in data["giocatrici"]) / tot) if tot else 0
+
+s1, s2, s3, s4 = st.columns(4)
+with s1:
+    st.markdown(f'<div class="v-statbox"><div class="v-statnum" style="color:#42a5f5;">{tot}</div><div class="v-statlab">Giocatrici</div></div>', unsafe_allow_html=True)
+with s2:
+    st.markdown(f'<div class="v-statbox"><div class="v-statnum" style="color:#66bb6a;">{attive}</div><div class="v-statlab">Attive</div></div>', unsafe_allow_html=True)
+with s3:
+    st.markdown(f'<div class="v-statbox"><div class="v-statnum" style="color:#ef5350;">{infort}</div><div class="v-statlab">Infortunate</div></div>', unsafe_allow_html=True)
+with s4:
+    st.markdown(f'<div class="v-statbox"><div class="v-statnum" style="color:#ffa726;">{alt_media}</div><div class="v-statlab">Altezza media</div></div>', unsafe_allow_html=True)
+
+st.markdown("<div class='v-divider'></div>", unsafe_allow_html=True)
+
+# ═══════════════════════════════════════════════════════════════════════
+# TABS
+# ═══════════════════════════════════════════════════════════════════════
 tab_roster, tab_tattica = st.tabs(["👥 Roster", "📐 Tattica"])
 
+# ═══════════════════════════════════════════════════════════════════════
 # TAB ROSTER
+# ═══════════════════════════════════════════════════════════════════════
 with tab_roster:
     col1, col2 = st.columns([3, 1])
     with col1:
         st.markdown("<div style='font-size:20px; font-weight:700; color:#ffffff;'>Rosa squadra</div>", unsafe_allow_html=True)
-        st.markdown("<div style='font-size:13px; color:#6a6a7a;'>" + str(len(data['giocatrici'])) + " giocatrici registrate</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='font-size:13px; color:#6a6a7a;'>{len(data['giocatrici'])} giocatrici registrate</div>", unsafe_allow_html=True)
     with col2:
-        if st.button("Nuova giocatrice", type="primary", use_container_width=True):
+        if st.button("➕ Nuova giocatrice", type="primary", use_container_width=True):
             st.session_state.show_add_player = True
 
+    # ── FORM NUOVA GIOCATRICE ──
     if st.session_state.get("show_add_player", False):
-        with st.container():
-            st.markdown("<div class='v-divider'></div>", unsafe_allow_html=True)
-            st.markdown("<div style='font-size:22px; font-weight:700; color:#ff6b6b; margin-bottom:20px;'>Nuova giocatrice</div>", unsafe_allow_html=True)
+        with st.container(border=True):
+            st.markdown("<div style='font-size:20px; font-weight:700; color:#ff6b6b; margin-bottom:16px;'>✨ Nuova giocatrice</div>", unsafe_allow_html=True)
             c1, c2, c3 = st.columns(3)
             with c1:
                 nome = st.text_input("Nome *", key="new_nome", placeholder="es. Giulia")
@@ -606,8 +407,7 @@ with tab_roster:
                 ruolo = st.selectbox("Ruolo", RUOLI_OPTIONS, key="new_ruolo")
             with c5:
                 altezza = st.number_input("Altezza (cm)", min_value=140, max_value=210, value=170, key="new_altezza")
-            st.markdown("<div style='font-size:13px; color:#7a7a8a; margin-bottom:6px;'>Foto giocatrice</div>", unsafe_allow_html=True)
-            foto_file = st.file_uploader("Carica foto", type=["jpg", "jpeg", "png", "webp"], key="new_foto", label_visibility="collapsed")
+            foto_file = st.file_uploader("📷 Foto giocatrice", type=["jpg", "jpeg", "png", "webp"], key="new_foto")
             if foto_file:
                 st.image(foto_file, width=120)
             forza_tags = st.text_input("Punti di forza (separati da virgola)", placeholder="es. attacco potente, muro, difesa", key="new_forza")
@@ -615,7 +415,7 @@ with tab_roster:
             note = st.text_area("Note", placeholder="Osservazioni tecniche, caratteriali, infortuni...", key="new_note")
             c_save, c_cancel = st.columns(2)
             with c_save:
-                if st.button("Salva giocatrice", type="primary", use_container_width=True):
+                if st.button("💾 Salva giocatrice", type="primary", use_container_width=True):
                     if nome and cognome:
                         new_id = max([g["id"] for g in data["giocatrici"]], default=0) + 1
                         forza_list = [{"tag": t.strip(), "val": 3} for t in forza_tags.split(",") if t.strip()]
@@ -633,11 +433,12 @@ with tab_roster:
                     else:
                         st.error("Inserisci nome e cognome")
             with c_cancel:
-                if st.button("Annulla", use_container_width=True):
+                if st.button("❌ Annulla", use_container_width=True):
                     st.session_state.show_add_player = False
                     st.rerun()
-            st.markdown("<div class='v-divider'></div>", unsafe_allow_html=True)
 
+    # ── FILTRI ──
+    st.markdown("<div style='margin-top:16px;'></div>", unsafe_allow_html=True)
     c_f1, c_f2 = st.columns(2)
     with c_f1:
         filtro_ruolo = st.multiselect("Filtra per ruolo", RUOLI_OPTIONS, default=[], key="filtro_ruolo")
@@ -649,62 +450,114 @@ with tab_roster:
                           and (not filtro_stato or g["stato"] in filtro_stato)]
 
     if not giocatrici_visibili:
-        st.info("Nessuna giocatrice trovata.")
+        st.info("Nessuna giocatrice trovata con i filtri selezionati.")
 
+    # ── GRIGLIA CARD ──
     cols_per_row = 3
     for row_idx in range(0, len(giocatrici_visibili), cols_per_row):
         row_giocatrici = giocatrici_visibili[row_idx:row_idx + cols_per_row]
         cols = st.columns(len(row_giocatrici))
         for col_idx, g in enumerate(row_giocatrici):
             with cols[col_idx]:
-                photo_html = build_photo_html(g)
-                badge_cls = get_badge_class(g["ruolo"])
-                stato_cls = "v-badge-ok" if g["stato"] == "attiva" else "v-badge-inf"
-                stato_txt = "OK " + g["stato"] if g["stato"] == "attiva" else "INF " + g["stato"]
-                note_block = ""
-                if g["note"]:
-                    note_preview = g["note"][:70] + ("..." if len(g["note"]) > 70 else "")
-                    note_block = '<div class="v-note">' + note_preview + '</div>'
+                head_cls, ph_cls, ruolo_cls, bar_cls = ROLE_MAP.get(g["ruolo"], ROLE_MAP["palleggiatrice"])
+                foto_b64 = get_photo_base64(g.get("foto", ""))
 
-                card_html = build_fun_card_html(g)
-                st.markdown(card_html, unsafe_allow_html=True)
+                if foto_b64:
+                    photo_html = f'<img src="{foto_b64}" class="card-photo" alt="{g["nome"]}">'
+                else:
+                    photo_html = f'<div class="card-photo-placeholder {ph_cls}">{get_emoji(g["ruolo"])}</div>'
 
-                foto_key = "foto_" + str(g['id'])
-                uploaded = st.file_uploader("Foto", type=["jpg", "jpeg", "png", "webp"], key=foto_key, label_visibility="collapsed")
-                if uploaded:
-                    g["foto"] = save_photo(g["id"], uploaded)
-                    save_data(data)
-                    st.rerun()
+                stato_cls = "stato-ok" if g["stato"] == "attiva" else "stato-inf" if g["stato"] == "infortunata" else "stato-squ"
+                stato_txt = "Attiva" if g["stato"] == "attiva" else "Infortunata" if g["stato"] == "infortunata" else "Squalificata"
 
-                if st.button("Elimina", key="del_" + str(g['id']), use_container_width=True):
-                    data["giocatrici"] = [x for x in data["giocatrici"] if x["id"] != g["id"]]
-                    if g.get("foto") and os.path.exists(g["foto"]):
-                        os.remove(g["foto"])
-                    save_data(data)
-                    st.rerun()
+                tags_html = ""
+                if g.get("forza"):
+                    for f in g["forza"][:3]:
+                        tags_html += f'<span class="tag">{f["tag"]}</span>'
 
-                with st.expander("Dettagli - " + g['nome'] + ' ' + g['cognome']):
-                    c1, c2 = st.columns(2)
-                    with c1:
-                        st.markdown("<div style='font-size:15px; font-weight:700; color:#ff6b6b;'>Punti di forza</div>", unsafe_allow_html=True)
+                note_html = ""
+                if g.get("note"):
+                    note_preview = g["note"][:55] + ("..." if len(g["note"]) > 55 else "")
+                    note_html = f'<div class="card-note">"{note_preview}"</div>'
+
+                # Card container Streamlit (border=True)
+                with st.container(border=True):
+                    st.markdown(
+                        f'<div class="card-header {head_cls}">'
+                        f'  <div class="card-jersey">{g["numero"]}</div>'
+                        f'  {photo_html}'
+                        f'</div>'
+                        f'<div class="card-body">'
+                        f'  <div class="card-name">{g["nome"]} {g["cognome"]}</div>'
+                        f'  <div class="card-ruolo {ruolo_cls}">{g["ruolo"]}</div>'
+                        f'  <div class="card-meta">📏 {g["altezza"]} cm</div>'
+                        f'  <div class="tag-box">{tags_html}</div>'
+                        f'  {note_html}'
+                        f'  <div style="margin-top:10px;">'
+                        f'    <span class="badge-stato {stato_cls}">{stato_txt}</span>'
+                        f'  </div>'
+                        f'  <div class="card-bar {bar_cls}"></div>'
+                        f'</div>',
+                        unsafe_allow_html=True
+                    )
+
+                    # Azioni integrate
+                    a1, a2 = st.columns(2)
+                    with a1:
+                        uploaded = st.file_uploader("📷", type=["jpg", "jpeg", "png", "webp"], key=f"foto_{g['id']}", label_visibility="collapsed")
+                        if uploaded:
+                            g["foto"] = save_photo(g["id"], uploaded)
+                            save_data(data)
+                            st.rerun()
+                    with a2:
+                        if st.button("🗑️ Elimina", key=f"del_{g['id']}", use_container_width=True):
+                            data["giocatrici"] = [x for x in data["giocatrici"] if x["id"] != g["id"]]
+                            if g.get("foto") and os.path.exists(g["foto"]):
+                                os.remove(g["foto"])
+                            save_data(data)
+                            st.rerun()
+
+                    # Dettagli / Modifica
+                    with st.expander(f"✏️ Dettagli — {g['nome']} {g['cognome']}"):
+                        e1, e2, e3 = st.columns(3)
+                        with e1:
+                            g["nome"] = st.text_input("Nome", value=g["nome"], key=f"edit_nome_{g['id']}")
+                        with e2:
+                            g["cognome"] = st.text_input("Cognome", value=g["cognome"], key=f"edit_cogn_{g['id']}")
+                        with e3:
+                            g["numero"] = st.number_input("N°", min_value=1, max_value=99, value=g["numero"], key=f"edit_num_{g['id']}")
+                        e4, e5 = st.columns(2)
+                        with e4:
+                            g["ruolo"] = st.selectbox("Ruolo", RUOLI_OPTIONS, index=RUOLI_OPTIONS.index(g["ruolo"]), key=f"edit_ruolo_{g['id']}")
+                        with e5:
+                            g["stato"] = st.selectbox("Stato", ["attiva", "infortunata", "squalificata"], index=["attiva", "infortunata", "squalificata"].index(g["stato"]), key=f"edit_stato_{g['id']}")
+
+                        st.markdown("<div style='font-size:13px; font-weight:700; color:#ff6b6b; margin-top:10px;'>Punti di forza</div>", unsafe_allow_html=True)
                         if g["forza"]:
                             for f in g["forza"]:
                                 stars = "<span class='v-star-on'>" + "&#9733;" * f["val"] + "</span><span class='v-star-off'>" + "&#9734;" * (5 - f["val"]) + "</span>"
-                                st.markdown("<div style='margin-bottom:6px; font-size:14px; color:#d0d0e0;'>- <strong>" + f['tag'] + "</strong> " + stars + "</div>", unsafe_allow_html=True)
+                                st.markdown(f"<div style='margin-bottom:4px; font-size:13px; color:#d0d0e0;'>• <strong>{f['tag']}</strong> {stars}</div>", unsafe_allow_html=True)
                         else:
                             st.caption("Nessun punto di forza")
-                    with c2:
-                        st.markdown("<div style='font-size:15px; font-weight:700; color:#48dbfb;'>Punti deboli</div>", unsafe_allow_html=True)
+
+                        st.markdown("<div style='font-size:13px; font-weight:700; color:#48dbfb; margin-top:10px;'>Punti deboli</div>", unsafe_allow_html=True)
                         if g["debolezza"]:
                             for d in g["debolezza"]:
                                 stars = "<span class='v-star-on'>" + "&#9733;" * d["val"] + "</span><span class='v-star-off'>" + "&#9734;" * (5 - d["val"]) + "</span>"
-                                st.markdown("<div style='margin-bottom:6px; font-size:14px; color:#d0d0e0;'>- <strong>" + d['tag'] + "</strong> " + stars + "</div>", unsafe_allow_html=True)
+                                st.markdown(f"<div style='margin-bottom:4px; font-size:13px; color:#d0d0e0;'>• <strong>{d['tag']}</strong> {stars}</div>", unsafe_allow_html=True)
                         else:
                             st.caption("Nessun punto debole")
-                    if g["note"]:
-                        st.markdown("<div style='margin-top:12px; padding:12px; background:rgba(255,255,255,0.04); border-radius:10px; border-left:3px solid #feca57;'><div style='font-size:11px; color:#7a7a8a; margin-bottom:4px; text-transform:uppercase;'>Note allenatore</div><div style='font-size:14px; color:#c0c0d0;'" + g['note'] + "</div></div>", unsafe_allow_html=True)
 
+                        g["note"] = st.text_area("Note allenatore", value=g.get("note", ""), key=f"edit_note_{g['id']}")
+
+                        if st.button("💾 Salva modifiche", key=f"save_edit_{g['id']}", type="primary"):
+                            save_data(data)
+                            st.success("Modifiche salvate!")
+                            st.rerun()
+
+# ═══════════════════════════════════════════════════════════════════════
 # TAB TATTICA
+# ═══════════════════════════════════════════════════════════════════════
 with tab_tattica:
     st.markdown("<div style='font-size:24px; font-weight:700; color:#ffffff; margin-bottom:4px;'>Formazione Tattica</div>", unsafe_allow_html=True)
     st.markdown("<div style='font-size:13px; color:#6a6a7a; margin-bottom:24px;'>Configura le 6 posizioni in campo e il libero</div>", unsafe_allow_html=True)
@@ -712,21 +565,27 @@ with tab_tattica:
     st.markdown("<div style='font-size:15px; font-weight:600; color:#feca57; margin-bottom:14px;'>Seleziona le giocatrici per le 6 posizioni:</div>", unsafe_allow_html=True)
     cols = st.columns(6)
     giocatrici_attive = [g for g in data["giocatrici"] if g["stato"] == "attiva"]
-    nomi_giocatrici = {g["id"]: "#" + str(g["numero"]) + " " + g["nome"] for g in giocatrici_attive}
+    nomi_giocatrici = {g["id"]: f"#{g['numero']} {g['nome']}" for g in giocatrici_attive}
 
     for i, col in enumerate(cols):
         with col:
-            st.markdown("<div style='text-align:center; font-weight:700; color:#ff6b6b; margin-bottom:8px; font-size:13px;'>POS " + str(i+1) + "</div>", unsafe_allow_html=True)
-            sel = st.selectbox("Pos" + str(i+1), options=list(nomi_giocatrici.keys()), format_func=lambda x: nomi_giocatrici.get(x, ""), index=list(nomi_giocatrici.keys()).index(data["formazione"][i]) if data["formazione"][i] in nomi_giocatrici else 0, key="pos_" + str(i), label_visibility="collapsed")
+            st.markdown(f"<div style='text-align:center; font-weight:700; color:#ff6b6b; margin-bottom:8px; font-size:13px;'>POS {i+1}</div>", unsafe_allow_html=True)
+            ids = list(nomi_giocatrici.keys())
+            current = data["formazione"][i]
+            idx = ids.index(current) if current in ids else 0
+            sel = st.selectbox(f"Pos{i+1}", options=ids, format_func=lambda x: nomi_giocatrici.get(x, ""), index=idx, key=f"pos_{i}", label_visibility="collapsed")
             data["formazione"][i] = sel
 
     st.markdown("<div style='font-size:15px; font-weight:600; color:#48dbfb; margin:20px 0 14px;'>Libero:</div>", unsafe_allow_html=True)
-    libero_sel = st.selectbox("Libero", options=list(nomi_giocatrici.keys()), format_func=lambda x: nomi_giocatrici.get(x, ""), index=list(nomi_giocatrici.keys()).index(data["libero_id"]) if data["libero_id"] in nomi_giocatrici else 0, key="libero_sel", label_visibility="collapsed")
+    ids = list(nomi_giocatrici.keys())
+    current_lib = data["libero_id"]
+    idx_lib = ids.index(current_lib) if current_lib in ids else 0
+    libero_sel = st.selectbox("Libero", options=ids, format_func=lambda x: nomi_giocatrici.get(x, ""), index=idx_lib, key="libero_sel", label_visibility="collapsed")
     data["libero_id"] = libero_sel
 
     c_save, _ = st.columns([1, 3])
     with c_save:
-        if st.button("Salva formazione", type="primary", use_container_width=True):
+        if st.button("💾 Salva formazione", type="primary", use_container_width=True):
             save_data(data)
             st.success("Formazione salvata!")
 
@@ -740,7 +599,15 @@ with tab_tattica:
         st.session_state.current_rot = new_rot
         st.rerun()
 
-    positions = [{"x": 75, "y": 85}, {"x": 25, "y": 85}, {"x": 75, "y": 55}, {"x": 25, "y": 55}, {"x": 50, "y": 55}, {"x": 50, "y": 85}]
+    # Coordinate corrette (percentuali del contenitore, già centrate con translate)
+    positions = [
+        {"x": 75, "y": 18},   # Pos 1 (posteriore dx)
+        {"x": 25, "y": 18},   # Pos 6 (posteriore sx)
+        {"x": 75, "y": 42},   # Pos 5 (centrale dx)
+        {"x": 25, "y": 42},   # Pos 4 (centrale sx)
+        {"x": 50, "y": 42},   # Pos 3 (centro)
+        {"x": 50, "y": 18},   # Pos 2 (posteriore centro)
+    ]
     rot_offset = st.session_state.current_rot - 1
     rotated_pos = positions[rot_offset:] + positions[:rot_offset]
 
@@ -753,8 +620,17 @@ with tab_tattica:
         if g:
             pos = rotated_pos[idx]
             lib_class = " v-dot-lib" if (pid == data["libero_id"]) else ""
-            court_html += '<div class="v-dot' + lib_class + '" style="left:' + str(pos["x"]-6) + '%; top:' + str(pos["y"]-6) + '%;">' + str(g["numero"]) + '</div>'
+            court_html += f'<div class="v-dot{lib_class}" style="left:{pos["x"]}%; top:{pos["y"]}%;">{g["numero"]}</div>'
     court_html += '</div>'
     st.markdown(court_html, unsafe_allow_html=True)
 
-    st.markdown("<div style='display:flex; gap:10px; flex-wrap:wrap; margin-top:24px; justify-content:center;'><span class='v-badge v-badge-pal'>Palleggiatrice</span><span class='v-badge v-badge-sch'>Schiacciatrice</span><span class='v-badge v-badge-cen'>Centrale</span><span class='v-badge v-badge-opp'>Opposto</span><span class='v-badge v-badge-lib'>Libero</span></div>", unsafe_allow_html=True)
+    # Legenda ruoli
+    st.markdown("""
+    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:24px; justify-content:center;">
+        <span style="display:inline-block; padding:3px 10px; border-radius:12px; font-size:0.7rem; font-weight:700; background:rgba(66,165,245,0.15); color:#90caf9; border:1px solid rgba(66,165,245,0.3);">Palleggiatrice</span>
+        <span style="display:inline-block; padding:3px 10px; border-radius:12px; font-size:0.7rem; font-weight:700; background:rgba(239,83,80,0.15); color:#ef9a9a; border:1px solid rgba(239,83,80,0.3);">Schiacciatrice</span>
+        <span style="display:inline-block; padding:3px 10px; border-radius:12px; font-size:0.7rem; font-weight:700; background:rgba(102,187,106,0.15); color:#a5d6a7; border:1px solid rgba(102,187,106,0.3);">Centrale</span>
+        <span style="display:inline-block; padding:3px 10px; border-radius:12px; font-size:0.7rem; font-weight:700; background:rgba(171,71,188,0.15); color:#ce93d8; border:1px solid rgba(171,71,188,0.3);">Opposto</span>
+        <span style="display:inline-block; padding:3px 10px; border-radius:12px; font-size:0.7rem; font-weight:700; background:rgba(255,167,38,0.15); color:#ffcc80; border:1px solid rgba(255,167,38,0.3);">Libero</span>
+    </div>
+    """, unsafe_allow_html=True)
