@@ -6,6 +6,10 @@ import pickle
 import tempfile
 import shutil
 import random
+import urllib.request
+import urllib.parse
+import re
+import html as _html
 from datetime import datetime, date, timedelta
 
 # ============================================================
@@ -215,6 +219,84 @@ def genera_seduta(obiettivo, durata_tot, intensita, n_presenti, seed=None):
     return seduta, budget
 
 # ============================================================
+# ESERCIZI DA INTERNET
+# ============================================================
+# Parole chiave per costruire ricerche mirate
+KEYWORDS_OBJ = {
+    "Ricezione": "serve receive passing",
+    "Battuta": "serving",
+    "Attacco": "hitting spiking attack",
+    "Muro-Difesa": "blocking defense dig",
+    "Fase break (cambio palla)": "transition wash drill",
+    "Fase side-out": "side out serve receive",
+    "Condizione fisica": "conditioning agility",
+    "Tecnica generale": "fundamentals technique",
+}
+# Siti di riferimento per drills di pallavolo (ricerca Google mirata)
+SITI_DRILLS = [
+    ("The Art of Coaching Volleyball", "theartofcoachingvolleyball.com"),
+    ("Volleyball Advisors", "volleyballadvisors.com"),
+    ("BetterAtVolleyball", "betteratvolleyball.com"),
+    ("Volleyball Toolbox", "volleyballtoolbox.net"),
+]
+
+
+def link_ricerca(fondamentale, obiettivo, livello):
+    """Costruisce link di ricerca (YouTube, Google, siti di drills)."""
+    kw = KEYWORDS_OBJ.get(obiettivo, "")
+    base = f"volleyball {kw} drills {fondamentale} {livello}".strip()
+    q = urllib.parse.quote_plus(base + " esercizi pallavolo")
+    qen = urllib.parse.quote_plus(base)
+    links = {
+        "\U0001F534 YouTube (video drills)": f"https://www.youtube.com/results?search_query={qen}",
+        "\U0001F50E Google": f"https://www.google.com/search?q={q}",
+    }
+    for nome, dominio in SITI_DRILLS:
+        links[f"\U0001F310 {nome}"] = f"https://www.google.com/search?q={qen}+site:{dominio}"
+    return links
+
+
+def _fetch_url(url, timeout=12):
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (VolleyCoach)"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        raw = r.read(300000)
+    return raw.decode("utf-8", errors="ignore")
+
+
+def _is_youtube(url):
+    u = url.lower()
+    return "youtube.com/watch" in u or "youtu.be/" in u or "youtube.com/shorts" in u
+
+
+def importa_da_link(url):
+    """Estrae titolo/descrizione da un link (YouTube via oEmbed, altrimenti HTML).
+    Ritorna dict {titolo, descrizione, autore, fonte} o solleva eccezione."""
+    url = url.strip()
+    if _is_youtube(url):
+        api = "https://www.youtube.com/oembed?" + urllib.parse.urlencode({"url": url, "format": "json"})
+        data = json.loads(_fetch_url(api))
+        return {
+            "titolo": data.get("title", ""),
+            "descrizione": f"Video di {data.get('author_name','')}. Guarda il drill al link e adattalo.",
+            "autore": data.get("author_name", ""),
+            "fonte": url,
+        }
+    htmltxt = _fetch_url(url)
+    titolo = ""
+    m = re.search(r"<title[^>]*>(.*?)</title>", htmltxt, re.I | re.S)
+    if m:
+        titolo = _html.unescape(m.group(1)).strip()
+    desc = ""
+    m = re.search(
+        r'<meta[^>]+(?:name|property)=["\'](?:description|og:description)["\'][^>]+content=["\'](.*?)["\']',
+        htmltxt, re.I | re.S,
+    )
+    if m:
+        desc = _html.unescape(m.group(1)).strip()
+    return {"titolo": titolo, "descrizione": desc, "autore": "", "fonte": url}
+
+
+# ============================================================
 # SIDEBAR
 # ============================================================
 with st.sidebar:
@@ -236,7 +318,7 @@ with st.sidebar:
 # ============================================================
 menu = st.radio(
     "",
-    ["🏠 Dashboard", "👥 Rosa", "📋 Programma Allenamenti", "📚 Libreria Esercizi", "🗓️ Calendario"],
+    ["🏠 Dashboard", "👥 Rosa", "📋 Programma Allenamenti", "📚 Libreria Esercizi", "🌐 Esercizi Online", "🗓️ Calendario"],
     horizontal=True,
     label_visibility="collapsed",
 )
@@ -450,17 +532,91 @@ if menu == "📚 Libreria Esercizi":
     for idx, e in vista.iterrows():
         with st.container():
             cc1, cc2 = st.columns([9, 1])
+            fonte = e.get("Fonte", "") if hasattr(e, "get") else ""
+            fonte_html = ""
+            if isinstance(fonte, str) and fonte.strip():
+                fonte_html = (f"<br><a href='{_html.escape(fonte)}' target='_blank' "
+                              f"style='color:#ffbf69;font-size:0.85em'>🔗 Fonte online</a>")
             cc1.markdown(
                 f"<div class='ex-card'><b>{e['Nome']}</b> "
                 f"<span style='color:#ffbf69'>· {e['Fondamentale']} · {e['Fase']} · {e['Durata_min']}min · min {e['Min_Giocatrici']} gig. · {e['Livello']}</span><br>"
                 f"<span style='color:#c9d6ea'>{e['Descrizione']}</span><br>"
-                f"<span style='color:#7f93b0;font-size:0.9em'>🔁 {e['Varianti']}</span></div>",
+                f"<span style='color:#7f93b0;font-size:0.9em'>🔁 {e['Varianti']}</span>{fonte_html}</div>",
                 unsafe_allow_html=True,
             )
             if cc2.button("🗑️", key=f"delex_{idx}"):
                 st.session_state.esercizi = df.drop(idx).reset_index(drop=True)
                 save_state()
                 st.rerun()
+
+# ============================================================
+# ESERCIZI ONLINE
+# ============================================================
+if menu == "🌐 Esercizi Online":
+    st.header("🌐 Esercizi da Internet")
+    st.caption("Trova ispirazione online e importa nuovi esercizi nella tua libreria. Serve una connessione a internet.")
+
+    tab_cerca, tab_importa = st.tabs(["🔎 Cerca ispirazione", "⬇️ Importa da link"])
+
+    # ---- TAB 1: link di ricerca ----
+    with tab_cerca:
+        c1, c2, c3 = st.columns(3)
+        f_fond = c1.selectbox("Fondamentale", FONDAMENTALI, key="onl_fond")
+        f_obj = c2.selectbox("Obiettivo", OBIETTIVI, key="onl_obj")
+        f_liv = c3.selectbox("Livello", ["Base", "Medio", "Avanzato"], key="onl_liv")
+        st.markdown("#### Apri le ricerche pronte")
+        st.caption("I link si aprono in una nuova scheda del browser.")
+        for etichetta, url in link_ricerca(f_fond, f_obj, f_liv).items():
+            st.markdown(f"- [{etichetta}]({url})")
+        st.info("💡 Trovato un buon drill? Copia il link e passa alla scheda **Importa da link** per aggiungerlo alla libreria.")
+
+    # ---- TAB 2: import da URL ----
+    with tab_importa:
+        url = st.text_input("Incolla il link (video YouTube o pagina web)", key="onl_url")
+        if st.button("🔍 Analizza link", use_container_width=True):
+            if url.strip():
+                try:
+                    with st.spinner("Recupero informazioni dal link..."):
+                        st.session_state._draft_online = importa_da_link(url)
+                    st.success("Informazioni recuperate! Completa i campi e salva.")
+                except Exception as e:
+                    st.session_state._draft_online = {"titolo": "", "descrizione": "", "autore": "", "fonte": url.strip()}
+                    st.warning(f"Non sono riuscito a leggere il contenuto ({e}). Puoi comunque compilare a mano: il link è gi\u00e0 salvato come fonte.")
+            else:
+                st.warning("Incolla prima un link.")
+
+        draft = st.session_state.get("_draft_online")
+        if draft:
+            st.markdown("---")
+            st.markdown("#### 📝 Nuovo esercizio dal link")
+            with st.form("form_online", clear_on_submit=False):
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    o_nome = st.text_input("Nome esercizio", value=draft.get("titolo", ""))
+                    o_fond = st.selectbox("Fondamentale", FONDAMENTALI, key="of_fond")
+                with c2:
+                    o_obj = st.selectbox("Obiettivo", OBIETTIVI, key="of_obj")
+                    o_fase = st.selectbox("Fase", ["Riscaldamento", "Centrale", "Situazionale", "Defaticamento"], index=1, key="of_fase")
+                with c3:
+                    o_min = st.number_input("Min. giocatrici", 1, 24, 4, key="of_min")
+                    o_dur = st.number_input("Durata (min)", 3, 40, 12, key="of_dur")
+                    o_liv = st.selectbox("Livello", ["Base", "Medio", "Avanzato"], index=1, key="of_liv")
+                o_desc = st.text_area("Descrizione", value=draft.get("descrizione", ""))
+                o_var = st.text_input("Varianti / progressioni")
+                o_fonte = st.text_input("Fonte (link)", value=draft.get("fonte", ""))
+                if st.form_submit_button("➕ Aggiungi alla libreria", use_container_width=True):
+                    if o_nome.strip():
+                        nuovo = {"Nome": o_nome.strip(), "Fondamentale": o_fond, "Obiettivo": o_obj,
+                                 "Fase": o_fase, "Min_Giocatrici": int(o_min), "Durata_min": int(o_dur),
+                                 "Livello": o_liv, "Descrizione": o_desc.strip(), "Varianti": o_var.strip(),
+                                 "Fonte": o_fonte.strip()}
+                        st.session_state.esercizi = pd.concat([st.session_state.esercizi, pd.DataFrame([nuovo])], ignore_index=True)
+                        save_state()
+                        st.session_state._draft_online = None
+                        st.success(f"'{o_nome}' aggiunto alla libreria!")
+                        st.rerun()
+                    else:
+                        st.warning("Serve almeno il nome dell'esercizio.")
 
 # ============================================================
 # CALENDARIO
