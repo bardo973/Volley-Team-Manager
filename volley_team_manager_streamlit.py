@@ -36,12 +36,30 @@ RUOLI = {
     "L": "Libero",
 }
 
-FONDAMENTALI = ["Battuta", "Ricezione", "Palleggio", "Attacco", "Muro", "Difesa", "Fisico"]
+FONDAMENTALI = ["Battuta", "Ricezione", "Palleggio", "Attacco", "Muro", "Difesa", "Transizione", "Fisico"]
 
 OBIETTIVI = [
-    "Ricezione", "Battuta", "Attacco", "Muro-Difesa",
+    "Ricezione", "Battuta", "Attacco", "Muro-Difesa", "Transizione (contrattacco)",
     "Fase break (cambio palla)", "Fase side-out", "Condizione fisica", "Tecnica generale",
 ]
+
+# Mappa il focus tattico del programma a lungo termine verso l'obiettivo di seduta
+MAP_FOCUS_OBIETTIVO = {
+    "Cambio palla (side-out)": "Fase side-out",
+    "Fase break": "Fase break (cambio palla)",
+    "Lettura / anticipo": "Muro-Difesa",
+    "Rotazioni": "Fase side-out",
+    "Sistemi di ricezione": "Ricezione",
+    "Comunicazione": "Tecnica generale",
+    "Transizione (difesa-contrattacco)": "Transizione (contrattacco)",
+}
+# Intensita' suggerita in base alla fase (mesociclo) del programma
+FASE_INTENSITA = {
+    "Costruzione": "Medio",
+    "Sviluppo": "Carico",
+    "Specifica-Tattica": "Carico",
+    "Picco-Mantenimento": "Scarico",
+}
 
 INTENSITA = ["Scarico", "Medio", "Carico", "Pre-partita"]
 
@@ -49,7 +67,7 @@ INTENSITA = ["Scarico", "Medio", "Carico", "Pre-partita"]
 AREE_SVILUPPO = {
     "Fisico": ["Forza", "Potenza / salto", "Rapidit\u00e0 / agilit\u00e0", "Resistenza", "Mobilit\u00e0 / prevenzione"],
     "Tecnico": ["Battuta", "Ricezione", "Palleggio / alzata", "Attacco", "Muro", "Difesa"],
-    "Tattico": ["Cambio palla (side-out)", "Fase break", "Lettura / anticipo", "Rotazioni", "Sistemi di ricezione", "Comunicazione"],
+    "Tattico": ["Cambio palla (side-out)", "Fase break", "Transizione (difesa-contrattacco)", "Lettura / anticipo", "Rotazioni", "Sistemi di ricezione", "Comunicazione"],
 }
 
 # Lavagna tattica (canvas HTML self-contained, nessuna libreria esterna)
@@ -136,6 +154,35 @@ st.markdown("""
         display:inline-block; padding: 2px 10px; border-radius: 999px;
         font-size: .8em; font-weight: 700; margin-top: 6px;
     }
+    /* --- Card giocatrice con FLIP al passaggio del mouse --- */
+    .pc-flip { perspective: 1200px; margin-bottom: 12px; }
+    .pc-flip-inner {
+        position: relative; width: 100%; min-height: 168px;
+        transition: transform .6s cubic-bezier(.2,.8,.2,1);
+        transform-style: preserve-3d;
+    }
+    .pc-flip:hover .pc-flip-inner { transform: rotateY(180deg); }
+    .pc-face {
+        position: absolute; inset: 0; width: 100%; height: 100%;
+        -webkit-backface-visibility: hidden; backface-visibility: hidden;
+        border-radius: 14px; padding: 14px 16px; box-sizing: border-box;
+        border: 1px solid rgba(255,191,105,0.35);
+    }
+    .pc-front {
+        background: linear-gradient(135deg, #14213d 0%, #1b2c52 100%);
+        box-shadow: 0 0 14px rgba(255,159,28,0.25), inset 0 0 12px rgba(255,159,28,0.05);
+    }
+    .pc-back {
+        transform: rotateY(180deg);
+        background: linear-gradient(135deg, #1b2c52 0%, #0f1b34 100%);
+        overflow-y: auto; display: flex; flex-direction: column;
+    }
+    .pc-back .pc-back-title {
+        color: #ffb703; font-weight: 800; font-size: .95rem; margin-bottom: 6px;
+        text-shadow: 0 0 8px rgba(255,183,3,0.5);
+    }
+    .pc-back .pc-back-body { color: #dbe6f7; font-size: .9rem; line-height: 1.35; white-space: pre-wrap; }
+    .pc-flip .pc-hint { color:#7f93b0; font-size:.72em; position:absolute; bottom:6px; right:12px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -175,6 +222,11 @@ ESERCIZI_DEFAULT = [
     # --- DIFESA ---
     {"Nome": "Difesa su attacco pesante", "Fondamentale": "Difesa", "Obiettivo": "Muro-Difesa", "Fase": "Centrale", "Min_Giocatrici": 4, "Durata_min": 15, "Livello": "Medio", "Descrizione": "Difesa di palloni attaccati con potenza. Posizione bassa, spostamenti, tuffo e rullata.", "Varianti": "Alternare pallonetti e attacchi forti (lettura)."},
     {"Nome": "Difesa e ricostruzione (free-ball)", "Fondamentale": "Difesa", "Obiettivo": "Fase break (cambio palla)", "Fase": "Situazionale", "Min_Giocatrici": 8, "Durata_min": 18, "Livello": "Medio", "Descrizione": "Dalla difesa si costruisce il contrattacco. Transizione difesa-attacco completa.", "Varianti": "Punteggio: 1 pt difesa recuperata, 2 pt contrattacco vincente."},
+
+    # --- TRANSIZIONE (difesa-contrattacco) ---
+    {"Nome": "Muro-difesa-contrattacco (transizione)", "Fondamentale": "Transizione", "Obiettivo": "Transizione (contrattacco)", "Fase": "Situazionale", "Min_Giocatrici": 6, "Durata_min": 15, "Livello": "Medio", "Descrizione": "Sequenza completa: muro/difesa dell'attacco avversario, ricostruzione veloce e contrattacco. Focus sui tempi di uscita dalla difesa all'attacco.", "Varianti": "Aggiungere il muro avversario sul contrattacco per chiudere lo scambio."},
+    {"Nome": "Transizione palleggiatrice (difesa \u2192 alzata)", "Fondamentale": "Transizione", "Obiettivo": "Transizione (contrattacco)", "Fase": "Centrale", "Min_Giocatrici": 4, "Durata_min": 12, "Livello": "Medio", "Descrizione": "La palleggiatrice parte in difesa/copertura e deve raggiungere la zona d'alzata per costruire il contrattacco. Rapidit\u00e0 di spostamento e lettura.", "Varianti": "Variare la zona di partenza e la traiettoria del pallone difeso."},
+    {"Nome": "Cambio fase side-out / break continuo", "Fondamentale": "Transizione", "Obiettivo": "Transizione (contrattacco)", "Fase": "Situazionale", "Min_Giocatrici": 10, "Durata_min": 18, "Livello": "Avanzato", "Descrizione": "Scambio continuo in cui la squadra alterna cambio palla e fase break senza fermarsi: allena la transizione mentale e fisica tra le due fasi.", "Varianti": "Assegnare bonus punti al contrattacco vincente dopo difesa."},
 
     # --- GIOCO / SITUAZIONALE ---
     {"Nome": "Wash drill 6vs6 (cambio palla)", "Fondamentale": "Difesa", "Obiettivo": "Fase break (cambio palla)", "Fase": "Situazionale", "Min_Giocatrici": 12, "Durata_min": 20, "Livello": "Avanzato", "Descrizione": "Scambio iniziato dal servizio + free ball. La squadra deve vincere entrambi per fare punto. Alta densit\u00e0.", "Varianti": "Ridurre a 6vs6 con jolly se le presenti sono meno."},
@@ -225,6 +277,19 @@ def load_state():
         return False
 
 
+def sync_esercizi_default():
+    """Aggiunge alla libreria eventuali esercizi di default mancanti (es. nuove fasi come Transizione)."""
+    try:
+        df = st.session_state.esercizi
+        presenti = set(df["Nome"].tolist()) if not df.empty else set()
+    except Exception:
+        return
+    mancanti = [e for e in ESERCIZI_DEFAULT if e["Nome"] not in presenti]
+    if mancanti:
+        st.session_state.esercizi = pd.concat([df, pd.DataFrame(mancanti)], ignore_index=True)
+        save_state()
+
+
 if "initialized" not in st.session_state:
     st.session_state.rosa = []
     st.session_state.esercizi = pd.DataFrame(ESERCIZI_DEFAULT)
@@ -232,6 +297,7 @@ if "initialized" not in st.session_state:
     st.session_state.scouting = []
     st.session_state.piani = []
     load_state()
+    sync_esercizi_default()
     st.session_state.initialized = True
 
 
@@ -343,6 +409,30 @@ def genera_programma_lt(nome, start, settimane, per_sett, foc_fis, foc_tec, foc_
     }
 
 
+def fase_corrente_piano(piano, giorno=None):
+    """Determina la fase (mesociclo) attiva di un programma a lungo termine per la data indicata."""
+    giorno = giorno or date.today()
+    try:
+        inizio = date.fromisoformat(piano["inizio"])
+    except Exception:
+        return None
+    fasi = piano.get("fasi", [])
+    if not fasi:
+        return None
+    delta = (giorno - inizio).days
+    if delta < 0:
+        return {"stato": "non_iniziato", "settimana": 0, "fase": fasi[0]}
+    settimana = delta // 7 + 1
+    for f in fasi:
+        try:
+            w_from, w_to = [int(x) for x in str(f.get("Settimane", "")).split("-")]
+        except Exception:
+            continue
+        if w_from <= settimana <= w_to:
+            return {"stato": "in_corso", "settimana": settimana, "fase": f}
+    return {"stato": "concluso", "settimana": settimana, "fase": fasi[-1]}
+
+
 def _lat1(s):
     """Rende una stringa compatibile con i font core del PDF (latin-1)."""
     return str(s).encode("latin-1", "replace").decode("latin-1")
@@ -366,6 +456,10 @@ def esporta_seduta_pdf(s):
     info = (f"Data: {s['data']}    Obiettivo: {s['obiettivo']}    Intensita: {s['intensita']}    "
             f"Durata: {tot} min    Presenti: {s.get('presenti', '-')}")
     pdf.multi_cell(0, 7, _lat1(info))
+    if s.get("programma"):
+        pdf.set_font("Helvetica", "I", 10)
+        _fp = f" - {s['fase_programma']}" if s.get("fase_programma") else ""
+        pdf.multi_cell(0, 6, _lat1(f"Programma: {s['programma']}{_fp}"))
     pdf.ln(2)
     fase_corrente = None
     for e in s["esercizi"]:
@@ -565,11 +659,14 @@ if menu == "👥 Rosa":
             with c3:
                 stato = st.selectbox("Stato", ["Disponibile", "Infortunata", "In recupero", "Indisponibile"])
                 note = st.text_input("Note")
+            lavoro = st.text_area("🎯 Lavoro individuale (obiettivi personali, visibile sul retro della card)",
+                                  placeholder="Es. migliorare la battuta in salto; potenziamento arti inferiori; lettura a muro...")
             if st.form_submit_button("Aggiungi", use_container_width=True):
                 if nome.strip():
                     st.session_state.rosa.append({
                         "Nome": nome.strip(), "Numero": int(numero), "Ruolo": ruolo,
                         "Altezza": int(altezza), "Stato": stato, "Note": note.strip(),
+                        "LavoroIndividuale": lavoro.strip(),
                     })
                     save_state()
                     st.success(f"Aggiunta {nome}!")
@@ -589,13 +686,21 @@ if menu == "👥 Rosa":
             colore = {"Disponibile": "#2ecc71", "Infortunata": "#ff5c5c", "In recupero": "#ffcf5c", "Indisponibile": "#8aa0bd"}.get(stato, "#8aa0bd")
             nome_e = _html.escape(str(g.get("Nome", "")))
             note_e = _html.escape(str(g.get("Note", "") or "—"))
+            lav_txt = str(g.get("LavoroIndividuale", "") or "").strip()
+            lav_e = _html.escape(lav_txt) if lav_txt else "<i style='color:#8aa0bd'>Nessun lavoro individuale assegnato.<br>Aggiungilo qui sotto in “Scheda / lavoro individuale”.</i>"
             cc1, cc2 = st.columns([5, 1])
             cc1.markdown(
-                f"<div class='player-card' style='box-shadow:0 0 18px {colore}66, inset 0 0 14px {colore}22; border-color:{colore}88;'>"
+                f"<div class='pc-flip'><div class='pc-flip-inner'>"
+                f"<div class='pc-face pc-front' style='box-shadow:0 0 18px {colore}66, inset 0 0 14px {colore}22; border-color:{colore}88;'>"
                 f"<span class='pc-num'>#{g['Numero']}</span> &nbsp;<span class='pc-name'>{nome_e}</span><br>"
                 f"<span class='pc-meta'>{RUOLI[g['Ruolo']]} · {g['Altezza']} cm</span><br>"
                 f"<span class='pc-badge' style='background:{colore}22; color:{colore}; border:1px solid {colore}88;'>{emoji} {stato}</span>"
-                f"<br><span class='pc-meta'>📝 {note_e}</span></div>",
+                f"<br><span class='pc-meta'>📝 {note_e}</span>"
+                f"<span class='pc-hint'>↺ passa il mouse</span></div>"
+                f"<div class='pc-face pc-back' style='border-color:{colore}88;'>"
+                f"<div class='pc-back-title'>🎯 Lavoro individuale — {nome_e}</div>"
+                f"<div class='pc-back-body'>{lav_e}</div></div>"
+                f"</div></div>",
                 unsafe_allow_html=True,
             )
             with cc2:
@@ -610,6 +715,18 @@ if menu == "👥 Rosa":
                     st.session_state.rosa.pop(i)
                     save_state()
                     st.rerun()
+            with st.expander("✏️ Scheda / lavoro individuale"):
+                nuovo_lav = st.text_area(
+                    "Lavoro individuale (obiettivi personali della giocatrice)",
+                    value=g.get("LavoroIndividuale", ""),
+                    key=f"lav_{i}",
+                    help="Compare sul retro della card quando ci passi sopra con il mouse.",
+                )
+                if st.button("💾 Salva lavoro individuale", key=f"savelav_{i}"):
+                    st.session_state.rosa[i]["LavoroIndividuale"] = nuovo_lav.strip()
+                    save_state()
+                    st.success("Lavoro individuale aggiornato!")
+                    st.rerun()
     else:
         st.info("Nessuna giocatrice inserita.")
 
@@ -621,13 +738,42 @@ if menu == "📋 Programma Allenamenti":
     st.caption("Imposta l'obiettivo della seduta: il generatore compone riscaldamento, parte tecnica, situazionale e defaticamento con esercizi coerenti dalla libreria.")
 
     disp = giocatrici_disponibili()
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        data_seduta = st.date_input("Data", value=date.today())
+
+    data_seduta = st.date_input("Data della seduta", value=date.today())
+
+    # --- Collegamento al programma a lungo termine ---
+    piani = st.session_state.get("piani", [])
+    piano_sel, info_fase = None, None
+    sugg_obiettivo, sugg_intensita = None, None
+    if piani:
+        opz = ["— Nessuno (seduta libera) —"] + [p["nome"] for p in piani]
+        sc = st.selectbox("🔗 Collega la seduta a un programma a lungo termine", range(len(opz)),
+                          format_func=lambda i: opz[i])
+        if sc > 0:
+            piano_sel = piani[sc - 1]
+            info_fase = fase_corrente_piano(piano_sel, data_seduta)
+            if info_fase and info_fase.get("fase"):
+                f = info_fase["fase"]
+                if info_fase["stato"] == "non_iniziato":
+                    st.info(f"📅 Il programma «{piano_sel['nome']}» inizia il {piano_sel['inizio']}. Prima fase: **{f['Fase']}**.")
+                elif info_fase["stato"] == "concluso":
+                    st.warning(f"⏳ Sei oltre la fine del programma «{piano_sel['nome']}» (settimana {info_fase['settimana']}). Ultima fase: **{f['Fase']}**.")
+                else:
+                    st.success(f"📌 Settimana {info_fase['settimana']} · fase attiva: **{f['Fase']}** — {f['Obiettivo']}")
+                st.caption(f"Focus del programma → 💪 {piano_sel['focus_fisico']} · 🏐 {piano_sel['focus_tecnico']} · 🧠 {piano_sel['focus_tattico']}")
+                sugg_obiettivo = MAP_FOCUS_OBIETTIVO.get(piano_sel.get("focus_tattico"))
+                nome_fase = f["Fase"].split("\u00b7")[-1].strip() if "\u00b7" in f["Fase"] else f["Fase"]
+                sugg_intensita = FASE_INTENSITA.get(nome_fase)
+                st.caption("💡 Obiettivo e intensità qui sotto sono già impostati sui suggerimenti del programma (puoi cambiarli).")
+
+    obj_index = OBIETTIVI.index(sugg_obiettivo) if sugg_obiettivo in OBIETTIVI else 0
+    int_index = INTENSITA.index(sugg_intensita) if sugg_intensita in INTENSITA else 1
+
+    c2, c3, c4 = st.columns(3)
     with c2:
-        obiettivo = st.selectbox("Obiettivo della seduta", OBIETTIVI)
+        obiettivo = st.selectbox("Obiettivo della seduta", OBIETTIVI, index=obj_index)
     with c3:
-        intensita = st.selectbox("Intensit\u00e0", INTENSITA, index=1)
+        intensita = st.selectbox("Intensit\u00e0", INTENSITA, index=int_index)
     with c4:
         durata = st.slider("Durata (min)", 60, 150, 90, step=15)
 
@@ -651,6 +797,8 @@ if menu == "📋 Programma Allenamenti":
             "presenti": int(n_presenti),
             "esercizi": seduta,
             "disegni": [],
+            "programma": (piano_sel["nome"] if piano_sel else None),
+            "fase_programma": (info_fase["fase"]["Fase"] if info_fase and info_fase.get("fase") else None),
         }
 
     ult = st.session_state.get("_ultima_seduta")
@@ -659,6 +807,9 @@ if menu == "📋 Programma Allenamenti":
         st.subheader(f"🎯 Seduta — {ult['obiettivo']} ({ult['intensita']})")
         tot = sum(int(e["Durata_min"]) for e in ult["esercizi"])
         st.caption(f"📅 {ult['data']} · durata stimata **{tot} min** · {ult['presenti']} presenti")
+        if ult.get("programma"):
+            _fp = f" · {ult['fase_programma']}" if ult.get("fase_programma") else ""
+            st.caption(f"🔗 Collegata al programma «{ult['programma']}»{_fp}")
 
         fase_corrente = None
         icone = {"Riscaldamento": "🔥", "Centrale": "🏐", "Situazionale": "🆚", "Defaticamento": "🧘"}
@@ -690,6 +841,47 @@ if menu == "📋 Programma Allenamenti":
                         e["disegni"].pop(dj)
                         st.session_state._ultima_seduta = ult
                         st.rerun()
+            with st.expander("✏️ Modifica / sostituisci questo esercizio"):
+                df_lib = st.session_state.esercizi
+                alt = df_lib[df_lib["Fase"] == e["Fase"]]
+                nomi_alt = alt["Nome"].tolist()
+                idx_cur = nomi_alt.index(e["Nome"]) if e["Nome"] in nomi_alt else 0
+                nuovo = st.selectbox("Sostituisci con (esercizi della stessa fase)", nomi_alt,
+                                     index=idx_cur, key=f"swap_{ei}")
+                ca, cb, cc = st.columns([2, 1, 1])
+                nd = ca.number_input("Durata (min)", 1, 60, int(e["Durata_min"]), key=f"dur_{ei}")
+                if cb.button("✅ Applica", key=f"apply_{ei}"):
+                    row = alt[alt["Nome"] == nuovo].iloc[0].to_dict()
+                    row["Durata_min"] = int(nd)
+                    row["disegni"] = e.get("disegni", [])
+                    ult["esercizi"][ei] = row
+                    st.session_state._ultima_seduta = ult
+                    st.rerun()
+                if cc.button("🗑️ Rimuovi", key=f"rmex_{ei}"):
+                    ult["esercizi"].pop(ei)
+                    st.session_state._ultima_seduta = ult
+                    st.rerun()
+
+        st.markdown("---")
+        with st.expander("➕ Aggiungi un esercizio alla seduta"):
+            df_add = st.session_state.esercizi
+            fase_add = st.selectbox("Fase", ["Riscaldamento", "Centrale", "Situazionale", "Defaticamento"], key="addfase")
+            pool_add = df_add[df_add["Fase"] == fase_add]
+            if pool_add.empty:
+                st.caption("Nessun esercizio in libreria per questa fase.")
+            else:
+                nome_add = st.selectbox("Esercizio", pool_add["Nome"].tolist(), key="addnome")
+                dur_def = int(pool_add[pool_add["Nome"] == nome_add].iloc[0]["Durata_min"])
+                dur_add = st.number_input("Durata (min)", 1, 60, dur_def, key="adddur")
+                if st.button("➕ Aggiungi alla seduta", key="addbtn"):
+                    row = pool_add[pool_add["Nome"] == nome_add].iloc[0].to_dict()
+                    row["Durata_min"] = int(dur_add)
+                    row["disegni"] = []
+                    ult["esercizi"].append(row)
+                    ordine = {"Riscaldamento": 0, "Centrale": 1, "Situazionale": 2, "Defaticamento": 3}
+                    ult["esercizi"].sort(key=lambda x: ordine.get(x.get("Fase"), 9))
+                    st.session_state._ultima_seduta = ult
+                    st.rerun()
 
         st.markdown("---")
         st.markdown("#### 🎨 Disegni generali della seduta (facoltativo)")
