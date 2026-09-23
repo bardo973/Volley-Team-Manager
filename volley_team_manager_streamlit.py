@@ -9,10 +9,7 @@ import random
 import urllib.request
 import urllib.parse
 import re
-import io
 import html as _html
-import base64
-import streamlit.components.v1 as components
 from datetime import datetime, date, timedelta
 
 # ============================================================
@@ -36,153 +33,120 @@ RUOLI = {
     "L": "Libero",
 }
 
-FONDAMENTALI = ["Battuta", "Ricezione", "Palleggio", "Attacco", "Muro", "Difesa", "Transizione", "Fisico"]
+FONDAMENTALI = ["Battuta", "Ricezione", "Palleggio", "Attacco", "Muro", "Difesa", "Fisico"]
 
 OBIETTIVI = [
-    "Ricezione", "Battuta", "Attacco", "Muro-Difesa", "Transizione (contrattacco)",
+    "Ricezione", "Battuta", "Attacco", "Muro-Difesa",
     "Fase break (cambio palla)", "Fase side-out", "Condizione fisica", "Tecnica generale",
 ]
 
-# Mappa il focus tattico del programma a lungo termine verso l'obiettivo di seduta
-MAP_FOCUS_OBIETTIVO = {
-    "Cambio palla (side-out)": "Fase side-out",
-    "Fase break": "Fase break (cambio palla)",
-    "Lettura / anticipo": "Muro-Difesa",
-    "Rotazioni": "Fase side-out",
-    "Sistemi di ricezione": "Ricezione",
-    "Comunicazione": "Tecnica generale",
-    "Transizione (difesa-contrattacco)": "Transizione (contrattacco)",
-}
-# Intensita' suggerita in base alla fase (mesociclo) del programma
-FASE_INTENSITA = {
-    "Costruzione": "Medio",
-    "Sviluppo": "Carico",
-    "Specifica-Tattica": "Carico",
-    "Picco-Mantenimento": "Scarico",
-}
-
 INTENSITA = ["Scarico", "Medio", "Carico", "Pre-partita"]
-
-# Aree di sviluppo per il programma a lungo termine
-AREE_SVILUPPO = {
-    "Fisico": ["Forza", "Potenza / salto", "Rapidit\u00e0 / agilit\u00e0", "Resistenza", "Mobilit\u00e0 / prevenzione"],
-    "Tecnico": ["Battuta", "Ricezione", "Palleggio / alzata", "Attacco", "Muro", "Difesa"],
-    "Tattico": ["Cambio palla (side-out)", "Fase break", "Transizione (difesa-contrattacco)", "Lettura / anticipo", "Rotazioni", "Sistemi di ricezione", "Comunicazione"],
-}
-
-# Lavagna tattica (canvas HTML self-contained, nessuna libreria esterna)
-TACTIC_BOARD_HTML = """
-<div style="font-family:Segoe UI,Arial,sans-serif;color:#eaf1ff">
-  <div style="margin-bottom:8px;display:flex;gap:14px;align-items:center;flex-wrap:wrap">
-    <label>Colore <input type="color" id="col" value="#ff9f1c"></label>
-    <label>Spessore <input type="range" id="siz" min="1" max="14" value="3"></label>
-    <button id="clr" style="padding:4px 12px;border-radius:8px;border:none;background:#26334f;color:#eaf1ff;cursor:pointer">Pulisci</button>
-    <button id="dl" style="padding:4px 12px;border-radius:8px;border:none;background:#ff9f1c;color:#1a1000;font-weight:700;cursor:pointer">Scarica PNG</button>
-  </div>
-  <canvas id="cv" width="700" height="400" style="border-radius:10px;border:1px solid #26334f;background:#0f6b3f;touch-action:none;max-width:100%"></canvas>
-</div>
-<script>
-(function(){
-  var cv=document.getElementById('cv'), ctx=cv.getContext('2d');
-  function court(){
-    ctx.clearRect(0,0,cv.width,cv.height);
-    ctx.fillStyle='#0f6b3f'; ctx.fillRect(0,0,cv.width,cv.height);
-    ctx.strokeStyle='#ffffff'; ctx.lineWidth=2;
-    var m=40; ctx.strokeRect(m,m,cv.width-2*m,cv.height-2*m);
-    ctx.beginPath(); ctx.moveTo(cv.width/2,m); ctx.lineTo(cv.width/2,cv.height-m); ctx.stroke();
-    var a3=(cv.width/2-m)/3;
-    ctx.setLineDash([6,6]);
-    ctx.beginPath(); ctx.moveTo(cv.width/2-a3,m); ctx.lineTo(cv.width/2-a3,cv.height-m); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(cv.width/2+a3,m); ctx.lineTo(cv.width/2+a3,cv.height-m); ctx.stroke();
-    ctx.setLineDash([]);
-  }
-  court();
-  var drawing=false;
-  function pos(e){var r=cv.getBoundingClientRect();var t=e.touches?e.touches[0]:e;return{x:t.clientX-r.left,y:t.clientY-r.top};}
-  function start(e){drawing=true;var p=pos(e);ctx.beginPath();ctx.moveTo(p.x,p.y);e.preventDefault();}
-  function move(e){if(!drawing)return;var p=pos(e);ctx.strokeStyle=document.getElementById('col').value;ctx.lineWidth=document.getElementById('siz').value;ctx.lineCap='round';ctx.lineTo(p.x,p.y);ctx.stroke();e.preventDefault();}
-  function end(){drawing=false;}
-  cv.addEventListener('mousedown',start);cv.addEventListener('mousemove',move);window.addEventListener('mouseup',end);
-  cv.addEventListener('touchstart',start);cv.addEventListener('touchmove',move);cv.addEventListener('touchend',end);
-  document.getElementById('clr').addEventListener('click',court);
-  document.getElementById('dl').addEventListener('click',function(){var a=document.createElement('a');a.download='schema_seduta.png';a.href=cv.toDataURL('image/png');a.click();});
-})();
-</script>
-"""
 
 # ============================================================
 # CSS
 # ============================================================
 st.markdown("""
 <style>
-    .stApp { background: linear-gradient(180deg, #0b1220 0%, #101b33 100%); }
-    .stSidebar { background-color: #0c1526 !important; }
-    h1, h2, h3 { color: #ffb703 !important; font-family: 'Segoe UI', sans-serif; }
+    :root {
+        --vc-bg1:#0a1120; --vc-bg2:#0f1c38; --vc-card:#141f3a; --vc-card2:#16223d;
+        --vc-border:#26334f; --vc-accent:#ff9f1c; --vc-accent2:#ffbf69;
+        --vc-text:#e8eefc; --vc-muted:#9fb3d1;
+    }
+    .stApp {
+        background:
+            radial-gradient(1200px 600px at 15% -10%, rgba(255,159,28,0.10), transparent 60%),
+            radial-gradient(1000px 500px at 110% 0%, rgba(45,110,255,0.12), transparent 55%),
+            linear-gradient(180deg, var(--vc-bg1) 0%, var(--vc-bg2) 100%);
+        color: var(--vc-text);
+    }
+    .block-container { padding-top: 1.4rem; }
+    section[data-testid="stSidebar"] {
+        background: linear-gradient(180deg,#0b1526 0%, #0a1120 100%) !important;
+        border-right: 1px solid var(--vc-border);
+    }
+    h1, h2, h3 {
+        color: var(--vc-accent) !important;
+        font-family: 'Segoe UI', 'Trebuchet MS', sans-serif;
+        letter-spacing: .3px;
+    }
+    h2 { border-bottom: 2px solid rgba(255,159,28,0.25); padding-bottom: .35rem; }
+
+    /* Bottoni */
     .stButton>button {
-        border-radius: 8px; font-weight: 600; border: none;
-        background: linear-gradient(90deg, #ff9f1c, #ffbf69); color: #1a1000;
+        border-radius: 10px; font-weight: 700; border: none;
+        background: linear-gradient(90deg, var(--vc-accent), var(--vc-accent2)); color: #1a1000;
+        transition: all .18s ease;
     }
-    .stButton>button:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(255,159,28,0.4); }
+    .stButton>button:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(255,159,28,0.45); }
+    .stButton>button:active { transform: translateY(0); }
+
+    /* Menu a pillole (st.radio orizzontale) */
+    div[role="radiogroup"][aria-label=""] { gap:.4rem; }
+    div[data-testid="stHorizontalBlock"] { align-items: stretch; }
+    div[role="radiogroup"] label {
+        background: var(--vc-card); border:1px solid var(--vc-border);
+        border-radius: 999px; padding: .35rem .9rem; margin: 0 .15rem;
+        transition: all .15s ease;
+    }
+    div[role="radiogroup"] label:hover { border-color: var(--vc-accent); }
+
+    /* Metriche come card */
+    div[data-testid="stMetric"] {
+        background: linear-gradient(180deg, var(--vc-card) 0%, var(--vc-card2) 100%);
+        border: 1px solid var(--vc-border); border-radius: 14px;
+        padding: 14px 16px; box-shadow: 0 4px 14px rgba(0,0,0,0.25);
+    }
+    div[data-testid="stMetricValue"] { font-size: 1.8rem !important; font-weight: 800 !important; color: var(--vc-accent) !important; }
+    div[data-testid="stMetricLabel"] { color: var(--vc-muted) !important; }
+
+    /* Card personalizzate */
     .block-seduta {
-        background: #16223d; border-radius: 10px; padding: 14px 16px;
-        margin-bottom: 10px; border-left: 4px solid #ff9f1c;
+        background: linear-gradient(90deg, var(--vc-card2), rgba(22,34,61,0.6));
+        border-radius: 12px; padding: 14px 16px; margin-bottom: 10px;
+        border-left: 4px solid var(--vc-accent);
+        box-shadow: 0 3px 10px rgba(0,0,0,0.2); transition: transform .15s ease;
     }
+    .block-seduta:hover { transform: translateX(3px); }
     .ex-card {
-        background: #14213d; border-radius: 10px; padding: 12px 14px;
-        margin-bottom: 8px; border: 1px solid #26334f;
+        background: var(--vc-card); border-radius: 12px; padding: 14px 16px;
+        margin-bottom: 10px; border: 1px solid var(--vc-border);
+        box-shadow: 0 3px 10px rgba(0,0,0,0.18); transition: all .15s ease;
     }
-    div[data-testid="stMetricValue"] { font-size: 1.7rem !important; font-weight: 700 !important; }
-    .player-card {
-        position: relative;
-        background: linear-gradient(135deg, #14213d 0%, #1b2c52 100%);
-        border-radius: 14px; padding: 14px 16px; margin-bottom: 12px;
-        border: 1px solid rgba(255,191,105,0.35);
-        box-shadow: 0 0 14px rgba(255,159,28,0.25), inset 0 0 12px rgba(255,159,28,0.05);
-        transition: all .2s ease;
+    .ex-card:hover { border-color: var(--vc-accent); box-shadow: 0 6px 18px rgba(0,0,0,0.3); }
+
+    /* Badge livello / intensita */
+    .vc-badge {
+        display:inline-block; padding:.15rem .6rem; border-radius:999px;
+        font-size:.72rem; font-weight:700; letter-spacing:.3px; margin-right:.3rem;
     }
-    .player-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 0 24px rgba(255,159,28,0.55), inset 0 0 18px rgba(255,159,28,0.08);
+    .badge-base { background:rgba(46,204,113,0.18); color:#5be59a; border:1px solid rgba(46,204,113,0.4); }
+    .badge-medio { background:rgba(255,159,28,0.18); color:#ffbf69; border:1px solid rgba(255,159,28,0.4); }
+    .badge-avanzato { background:rgba(231,76,60,0.18); color:#ff8f80; border:1px solid rgba(231,76,60,0.4); }
+
+    /* Hero header */
+    .vc-hero {
+        background: linear-gradient(120deg, rgba(255,159,28,0.16), rgba(45,110,255,0.14));
+        border: 1px solid var(--vc-border); border-radius: 18px;
+        padding: 20px 26px; margin-bottom: 16px;
+        box-shadow: 0 6px 22px rgba(0,0,0,0.28);
     }
-    .player-card .pc-num {
-        font-size: 1.5rem; font-weight: 800; color: #ffb703;
-        text-shadow: 0 0 10px rgba(255,183,3,0.85);
+    .vc-hero h1 { margin:0; font-size:1.9rem; }
+    .vc-hero p { margin:.3rem 0 0; color: var(--vc-muted); font-size:.95rem; }
+
+    /* Tabs, expander, input */
+    button[data-baseweb="tab"] { font-weight:600; }
+    div[data-testid="stExpander"] {
+        border:1px solid var(--vc-border); border-radius:12px; background:rgba(20,31,58,0.5);
     }
-    .player-card .pc-name { font-size: 1.12rem; font-weight: 700; color: #eaf1ff; }
-    .player-card .pc-meta { color: #9fb3d1; font-size: .9em; }
-    .player-card .pc-badge {
-        display:inline-block; padding: 2px 10px; border-radius: 999px;
-        font-size: .8em; font-weight: 700; margin-top: 6px;
+    .stTextInput input, .stNumberInput input, .stTextArea textarea, div[data-baseweb="select"]>div {
+        border-radius: 10px !important;
     }
-    /* --- Card giocatrice con FLIP al passaggio del mouse --- */
-    .pc-flip { perspective: 1200px; margin-bottom: 12px; }
-    .pc-flip-inner {
-        position: relative; width: 100%; min-height: 168px;
-        transition: transform .6s cubic-bezier(.2,.8,.2,1);
-        transform-style: preserve-3d;
-    }
-    .pc-flip:hover .pc-flip-inner { transform: rotateY(180deg); }
-    .pc-face {
-        position: absolute; inset: 0; width: 100%; height: 100%;
-        -webkit-backface-visibility: hidden; backface-visibility: hidden;
-        border-radius: 14px; padding: 14px 16px; box-sizing: border-box;
-        border: 1px solid rgba(255,191,105,0.35);
-    }
-    .pc-front {
-        background: linear-gradient(135deg, #14213d 0%, #1b2c52 100%);
-        box-shadow: 0 0 14px rgba(255,159,28,0.25), inset 0 0 12px rgba(255,159,28,0.05);
-    }
-    .pc-back {
-        transform: rotateY(180deg);
-        background: linear-gradient(135deg, #1b2c52 0%, #0f1b34 100%);
-        overflow-y: auto; display: flex; flex-direction: column;
-    }
-    .pc-back .pc-back-title {
-        color: #ffb703; font-weight: 800; font-size: .95rem; margin-bottom: 6px;
-        text-shadow: 0 0 8px rgba(255,183,3,0.5);
-    }
-    .pc-back .pc-back-body { color: #dbe6f7; font-size: .9rem; line-height: 1.35; white-space: pre-wrap; }
-    .pc-flip .pc-hint { color:#7f93b0; font-size:.72em; position:absolute; bottom:6px; right:12px; }
+    hr { border-color: var(--vc-border); }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-thumb { background: #2a3a5c; border-radius: 8px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--vc-accent); }
 </style>
 """, unsafe_allow_html=True)
 
@@ -223,11 +187,6 @@ ESERCIZI_DEFAULT = [
     {"Nome": "Difesa su attacco pesante", "Fondamentale": "Difesa", "Obiettivo": "Muro-Difesa", "Fase": "Centrale", "Min_Giocatrici": 4, "Durata_min": 15, "Livello": "Medio", "Descrizione": "Difesa di palloni attaccati con potenza. Posizione bassa, spostamenti, tuffo e rullata.", "Varianti": "Alternare pallonetti e attacchi forti (lettura)."},
     {"Nome": "Difesa e ricostruzione (free-ball)", "Fondamentale": "Difesa", "Obiettivo": "Fase break (cambio palla)", "Fase": "Situazionale", "Min_Giocatrici": 8, "Durata_min": 18, "Livello": "Medio", "Descrizione": "Dalla difesa si costruisce il contrattacco. Transizione difesa-attacco completa.", "Varianti": "Punteggio: 1 pt difesa recuperata, 2 pt contrattacco vincente."},
 
-    # --- TRANSIZIONE (difesa-contrattacco) ---
-    {"Nome": "Muro-difesa-contrattacco (transizione)", "Fondamentale": "Transizione", "Obiettivo": "Transizione (contrattacco)", "Fase": "Situazionale", "Min_Giocatrici": 6, "Durata_min": 15, "Livello": "Medio", "Descrizione": "Sequenza completa: muro/difesa dell'attacco avversario, ricostruzione veloce e contrattacco. Focus sui tempi di uscita dalla difesa all'attacco.", "Varianti": "Aggiungere il muro avversario sul contrattacco per chiudere lo scambio."},
-    {"Nome": "Transizione palleggiatrice (difesa \u2192 alzata)", "Fondamentale": "Transizione", "Obiettivo": "Transizione (contrattacco)", "Fase": "Centrale", "Min_Giocatrici": 4, "Durata_min": 12, "Livello": "Medio", "Descrizione": "La palleggiatrice parte in difesa/copertura e deve raggiungere la zona d'alzata per costruire il contrattacco. Rapidit\u00e0 di spostamento e lettura.", "Varianti": "Variare la zona di partenza e la traiettoria del pallone difeso."},
-    {"Nome": "Cambio fase side-out / break continuo", "Fondamentale": "Transizione", "Obiettivo": "Transizione (contrattacco)", "Fase": "Situazionale", "Min_Giocatrici": 10, "Durata_min": 18, "Livello": "Avanzato", "Descrizione": "Scambio continuo in cui la squadra alterna cambio palla e fase break senza fermarsi: allena la transizione mentale e fisica tra le due fasi.", "Varianti": "Assegnare bonus punti al contrattacco vincente dopo difesa."},
-
     # --- GIOCO / SITUAZIONALE ---
     {"Nome": "Wash drill 6vs6 (cambio palla)", "Fondamentale": "Difesa", "Obiettivo": "Fase break (cambio palla)", "Fase": "Situazionale", "Min_Giocatrici": 12, "Durata_min": 20, "Livello": "Avanzato", "Descrizione": "Scambio iniziato dal servizio + free ball. La squadra deve vincere entrambi per fare punto. Alta densit\u00e0.", "Varianti": "Ridurre a 6vs6 con jolly se le presenti sono meno."},
     {"Nome": "Partita a tema (obiettivo del giorno)", "Fondamentale": "Attacco", "Obiettivo": "Tecnica generale", "Fase": "Situazionale", "Min_Giocatrici": 10, "Durata_min": 20, "Livello": "Medio", "Descrizione": "Set a 15 con bonus punti sull'obiettivo tecnico della seduta (es. ace, muro, primo tempo).", "Varianti": "Cambiare la regola bonus a met\u00e0 set."},
@@ -246,8 +205,6 @@ def save_state():
         "rosa": st.session_state.rosa,
         "esercizi": st.session_state.esercizi.to_dict("records"),
         "sedute": st.session_state.sedute,
-        "scouting": st.session_state.get("scouting", []),
-        "piani": st.session_state.get("piani", []),
     }
     tmp = tempfile.NamedTemporaryFile(delete=False, dir=".")
     try:
@@ -270,34 +227,16 @@ def load_state():
         es = data.get("esercizi", [])
         st.session_state.esercizi = pd.DataFrame(es) if es else pd.DataFrame(ESERCIZI_DEFAULT)
         st.session_state.sedute = data.get("sedute", [])
-        st.session_state.scouting = data.get("scouting", [])
-        st.session_state.piani = data.get("piani", [])
         return True
     except Exception:
         return False
-
-
-def sync_esercizi_default():
-    """Aggiunge alla libreria eventuali esercizi di default mancanti (es. nuove fasi come Transizione)."""
-    try:
-        df = st.session_state.esercizi
-        presenti = set(df["Nome"].tolist()) if not df.empty else set()
-    except Exception:
-        return
-    mancanti = [e for e in ESERCIZI_DEFAULT if e["Nome"] not in presenti]
-    if mancanti:
-        st.session_state.esercizi = pd.concat([df, pd.DataFrame(mancanti)], ignore_index=True)
-        save_state()
 
 
 if "initialized" not in st.session_state:
     st.session_state.rosa = []
     st.session_state.esercizi = pd.DataFrame(ESERCIZI_DEFAULT)
     st.session_state.sedute = []
-    st.session_state.scouting = []
-    st.session_state.piani = []
     load_state()
-    sync_esercizi_default()
     st.session_state.initialized = True
 
 
@@ -306,6 +245,12 @@ if "initialized" not in st.session_state:
 # ============================================================
 def giocatrici_disponibili():
     return [g for g in st.session_state.rosa if g.get("Stato", "Disponibile") == "Disponibile"]
+
+
+def badge_livello(liv):
+    """Restituisce un badge HTML colorato per il livello dell'esercizio."""
+    cls = {"Base": "badge-base", "Medio": "badge-medio", "Avanzato": "badge-avanzato"}.get(liv, "badge-medio")
+    return f"<span class='vc-badge {cls}'>{_html.escape(str(liv))}</span>"
 
 
 def conta_ruoli(lista):
@@ -361,144 +306,6 @@ def genera_seduta(obiettivo, durata_tot, intensita, n_presenti, seed=None):
                 break
         # garantisci almeno un esercizio per fase se il pool non e' vuoto
     return seduta, budget
-
-
-def genera_programma_lt(nome, start, settimane, per_sett, foc_fis, foc_tec, foc_tat):
-    """Crea un programma pluri-settimanale (mesocicli) con progressione fisica, tecnica e tattica."""
-    blocchi = [
-        ("Fase 1 \u00b7 Costruzione", "Base generale: volume alto, tecnica pulita, condizionamento generale.", 0.30,
-         "Forza generale + mobilit\u00e0", "Fondamentali di base ({tec})", "Concetti base ({tat})"),
-        ("Fase 2 \u00b7 Sviluppo", "Aumento dell'intensit\u00e0: tecnica sotto carico e primi automatismi.", 0.30,
-         "Forza-potenza ({fis})", "{tec} sotto pressione", "{tat} a reparti / a coppie"),
-        ("Fase 3 \u00b7 Specifica-Tattica", "Lavoro situazionale: sistemi di gioco e intensit\u00e0 gara.", 0.25,
-         "Potenza / reattivit\u00e0 ({fis})", "{tec} in situazione di gioco", "{tat} in 6vs6 / sistemi"),
-        ("Fase 4 \u00b7 Picco-Mantenimento", "Scarico modulato, rifinitura e gestione della condizione verso le gare.", 0.15,
-         "Mantenimento + prevenzione", "Rifinitura {tec}", "Automatismi gara ({tat})"),
-    ]
-    fasi = []
-    assegnate = 0
-    for k, (titolo, desc, quota, fis_t, tec_t, tat_t) in enumerate(blocchi):
-        if k < len(blocchi) - 1:
-            n = max(1, round(settimane * quota))
-        else:
-            n = max(1, settimane - assegnate)
-        w_from = assegnate + 1
-        w_to = min(settimane, assegnate + n)
-        if w_from > settimane:
-            break
-        fasi.append({
-            "Fase": titolo,
-            "Settimane": f"{w_from}-{w_to}",
-            "\U0001F4AA Fisico": fis_t.format(fis=foc_fis),
-            "\U0001F3D0 Tecnico": tec_t.format(tec=foc_tec),
-            "\U0001F9E0 Tattico": tat_t.format(tat=foc_tat),
-            "Obiettivo": desc,
-        })
-        assegnate = w_to
-        if assegnate >= settimane:
-            break
-    return {
-        "nome": nome.strip() or "Programma",
-        "inizio": start.isoformat(),
-        "settimane": int(settimane),
-        "per_settimana": int(per_sett),
-        "focus_fisico": foc_fis,
-        "focus_tecnico": foc_tec,
-        "focus_tattico": foc_tat,
-        "fasi": fasi,
-    }
-
-
-def fase_corrente_piano(piano, giorno=None):
-    """Determina la fase (mesociclo) attiva di un programma a lungo termine per la data indicata."""
-    giorno = giorno or date.today()
-    try:
-        inizio = date.fromisoformat(piano["inizio"])
-    except Exception:
-        return None
-    fasi = piano.get("fasi", [])
-    if not fasi:
-        return None
-    delta = (giorno - inizio).days
-    if delta < 0:
-        return {"stato": "non_iniziato", "settimana": 0, "fase": fasi[0]}
-    settimana = delta // 7 + 1
-    for f in fasi:
-        try:
-            w_from, w_to = [int(x) for x in str(f.get("Settimane", "")).split("-")]
-        except Exception:
-            continue
-        if w_from <= settimana <= w_to:
-            return {"stato": "in_corso", "settimana": settimana, "fase": f}
-    return {"stato": "concluso", "settimana": settimana, "fase": fasi[-1]}
-
-
-def _lat1(s):
-    """Rende una stringa compatibile con i font core del PDF (latin-1)."""
-    return str(s).encode("latin-1", "replace").decode("latin-1")
-
-
-def esporta_seduta_pdf(s):
-    """Genera un PDF completo della seduta (testo + disegni). Richiede fpdf2."""
-    from fpdf import FPDF
-    pdf = FPDF(format="A4")
-    pdf.set_auto_page_break(auto=True, margin=15)
-    pdf.add_page()
-    pdf.set_font("Helvetica", "B", 18)
-    pdf.cell(0, 10, _lat1("VolleyCoach - Seduta di allenamento"), ln=1)
-    pdf.set_draw_color(255, 159, 28)
-    pdf.set_line_width(0.6)
-    y = pdf.get_y()
-    pdf.line(10, y, 200, y)
-    pdf.ln(3)
-    tot = sum(int(e["Durata_min"]) for e in s["esercizi"])
-    pdf.set_font("Helvetica", "", 11)
-    info = (f"Data: {s['data']}    Obiettivo: {s['obiettivo']}    Intensita: {s['intensita']}    "
-            f"Durata: {tot} min    Presenti: {s.get('presenti', '-')}")
-    pdf.multi_cell(0, 7, _lat1(info))
-    if s.get("programma"):
-        pdf.set_font("Helvetica", "I", 10)
-        _fp = f" - {s['fase_programma']}" if s.get("fase_programma") else ""
-        pdf.multi_cell(0, 6, _lat1(f"Programma: {s['programma']}{_fp}"))
-    pdf.ln(2)
-    fase_corrente = None
-    for e in s["esercizi"]:
-        if e["Fase"] != fase_corrente:
-            fase_corrente = e["Fase"]
-            pdf.ln(2)
-            pdf.set_font("Helvetica", "B", 13)
-            pdf.set_text_color(200, 120, 0)
-            pdf.cell(0, 8, _lat1(fase_corrente), ln=1)
-            pdf.set_text_color(20, 20, 20)
-        pdf.set_font("Helvetica", "B", 11)
-        pdf.multi_cell(0, 6, _lat1(f"{e['Nome']}  ({e['Durata_min']} min - {e['Fondamentale']} - {e['Livello']})"))
-        pdf.set_font("Helvetica", "", 10)
-        if e.get("Descrizione"):
-            pdf.multi_cell(0, 5, _lat1(e["Descrizione"]))
-        if e.get("Varianti"):
-            pdf.set_font("Helvetica", "I", 9)
-            pdf.multi_cell(0, 5, _lat1(f"Variante: {e['Varianti']}"))
-        for d in e.get("disegni", []):
-            try:
-                pdf.image(io.BytesIO(base64.b64decode(d["b64"])), w=110)
-                pdf.ln(1)
-            except Exception:
-                pass
-        pdf.ln(2)
-    if s.get("disegni"):
-        pdf.ln(3)
-        pdf.set_font("Helvetica", "B", 12)
-        pdf.set_text_color(200, 120, 0)
-        pdf.cell(0, 7, _lat1("Disegni generali"), ln=1)
-        pdf.set_text_color(20, 20, 20)
-        for d in s["disegni"]:
-            try:
-                pdf.image(io.BytesIO(base64.b64decode(d["b64"])), w=110)
-                pdf.ln(1)
-            except Exception:
-                pass
-    data = pdf.output()
-    return data.encode("latin-1") if isinstance(data, str) else bytes(data)
 
 # ============================================================
 # ESERCIZI DA INTERNET
@@ -600,7 +407,7 @@ with st.sidebar:
 # ============================================================
 menu = st.radio(
     "",
-    ["🏠 Dashboard", "👥 Rosa", "📋 Programma Allenamenti", "📈 Crescita & Scouting", "📚 Libreria Esercizi", "🌐 Esercizi Online", "🗓️ Calendario"],
+    ["🏠 Dashboard", "👥 Rosa", "📋 Programma Allenamenti", "📚 Libreria Esercizi", "🌐 Esercizi Online", "🗓️ Calendario"],
     horizontal=True,
     label_visibility="collapsed",
 )
@@ -610,7 +417,11 @@ st.markdown("---")
 # DASHBOARD
 # ============================================================
 if menu == "🏠 Dashboard":
-    st.header("🏠 Dashboard")
+    st.markdown(
+        "<div class='vc-hero'><h1>🏐 VolleyCoach Manager</h1>"
+        "<p>Il tuo pannello di controllo per la squadra · Serie D femminile</p></div>",
+        unsafe_allow_html=True,
+    )
     if not st.session_state.rosa:
         st.info("Inizia aggiungendo le tue giocatrici nella sezione **Rosa**.")
     c1, c2, c3, c4 = st.columns(4)
@@ -659,14 +470,11 @@ if menu == "👥 Rosa":
             with c3:
                 stato = st.selectbox("Stato", ["Disponibile", "Infortunata", "In recupero", "Indisponibile"])
                 note = st.text_input("Note")
-            lavoro = st.text_area("🎯 Lavoro individuale (obiettivi personali, visibile sul retro della card)",
-                                  placeholder="Es. migliorare la battuta in salto; potenziamento arti inferiori; lettura a muro...")
             if st.form_submit_button("Aggiungi", use_container_width=True):
                 if nome.strip():
                     st.session_state.rosa.append({
                         "Nome": nome.strip(), "Numero": int(numero), "Ruolo": ruolo,
                         "Altezza": int(altezza), "Stato": stato, "Note": note.strip(),
-                        "LavoroIndividuale": lavoro.strip(),
                     })
                     save_state()
                     st.success(f"Aggiunta {nome}!")
@@ -682,28 +490,11 @@ if menu == "👥 Rosa":
             if filtro and g["Ruolo"] not in filtro:
                 continue
             emoji = {"Disponibile": "🟢", "Infortunata": "🔴", "In recupero": "🟡", "Indisponibile": "⚪"}.get(g.get("Stato"), "⚪")
-            stato = g.get("Stato", "Disponibile")
-            colore = {"Disponibile": "#2ecc71", "Infortunata": "#ff5c5c", "In recupero": "#ffcf5c", "Indisponibile": "#8aa0bd"}.get(stato, "#8aa0bd")
-            nome_e = _html.escape(str(g.get("Nome", "")))
-            note_e = _html.escape(str(g.get("Note", "") or "—"))
-            lav_txt = str(g.get("LavoroIndividuale", "") or "").strip()
-            lav_e = _html.escape(lav_txt) if lav_txt else "<i style='color:#8aa0bd'>Nessun lavoro individuale assegnato.<br>Aggiungilo qui sotto in “Scheda / lavoro individuale”.</i>"
-            cc1, cc2 = st.columns([5, 1])
-            cc1.markdown(
-                f"<div class='pc-flip'><div class='pc-flip-inner'>"
-                f"<div class='pc-face pc-front' style='box-shadow:0 0 18px {colore}66, inset 0 0 14px {colore}22; border-color:{colore}88;'>"
-                f"<span class='pc-num'>#{g['Numero']}</span> &nbsp;<span class='pc-name'>{nome_e}</span><br>"
-                f"<span class='pc-meta'>{RUOLI[g['Ruolo']]} · {g['Altezza']} cm</span><br>"
-                f"<span class='pc-badge' style='background:{colore}22; color:{colore}; border:1px solid {colore}88;'>{emoji} {stato}</span>"
-                f"<br><span class='pc-meta'>📝 {note_e}</span>"
-                f"<span class='pc-hint'>↺ passa il mouse</span></div>"
-                f"<div class='pc-face pc-back' style='border-color:{colore}88;'>"
-                f"<div class='pc-back-title'>🎯 Lavoro individuale — {nome_e}</div>"
-                f"<div class='pc-back-body'>{lav_e}</div></div>"
-                f"</div></div>",
-                unsafe_allow_html=True,
-            )
-            with cc2:
+            c1, c2, c3, c4 = st.columns([4, 2, 2, 1])
+            c1.markdown(f"**#{g['Numero']} {g['Nome']}**  \n<span style='color:#9fb3d1'>{RUOLI[g['Ruolo']]} · {g['Altezza']} cm</span>", unsafe_allow_html=True)
+            c2.markdown(f"{emoji} {g.get('Stato','')}")
+            c3.caption(g.get("Note", "") or "—")
+            with c4:
                 nuovo_stato = st.selectbox("stato", ["Disponibile", "Infortunata", "In recupero", "Indisponibile"],
                                            index=["Disponibile", "Infortunata", "In recupero", "Indisponibile"].index(g.get("Stato", "Disponibile")),
                                            key=f"st_{i}", label_visibility="collapsed")
@@ -714,18 +505,6 @@ if menu == "👥 Rosa":
                 if st.button("🗑️", key=f"del_{i}"):
                     st.session_state.rosa.pop(i)
                     save_state()
-                    st.rerun()
-            with st.expander("✏️ Scheda / lavoro individuale"):
-                nuovo_lav = st.text_area(
-                    "Lavoro individuale (obiettivi personali della giocatrice)",
-                    value=g.get("LavoroIndividuale", ""),
-                    key=f"lav_{i}",
-                    help="Compare sul retro della card quando ci passi sopra con il mouse.",
-                )
-                if st.button("💾 Salva lavoro individuale", key=f"savelav_{i}"):
-                    st.session_state.rosa[i]["LavoroIndividuale"] = nuovo_lav.strip()
-                    save_state()
-                    st.success("Lavoro individuale aggiornato!")
                     st.rerun()
     else:
         st.info("Nessuna giocatrice inserita.")
@@ -738,42 +517,13 @@ if menu == "📋 Programma Allenamenti":
     st.caption("Imposta l'obiettivo della seduta: il generatore compone riscaldamento, parte tecnica, situazionale e defaticamento con esercizi coerenti dalla libreria.")
 
     disp = giocatrici_disponibili()
-
-    data_seduta = st.date_input("Data della seduta", value=date.today())
-
-    # --- Collegamento al programma a lungo termine ---
-    piani = st.session_state.get("piani", [])
-    piano_sel, info_fase = None, None
-    sugg_obiettivo, sugg_intensita = None, None
-    if piani:
-        opz = ["— Nessuno (seduta libera) —"] + [p["nome"] for p in piani]
-        sc = st.selectbox("🔗 Collega la seduta a un programma a lungo termine", range(len(opz)),
-                          format_func=lambda i: opz[i])
-        if sc > 0:
-            piano_sel = piani[sc - 1]
-            info_fase = fase_corrente_piano(piano_sel, data_seduta)
-            if info_fase and info_fase.get("fase"):
-                f = info_fase["fase"]
-                if info_fase["stato"] == "non_iniziato":
-                    st.info(f"📅 Il programma «{piano_sel['nome']}» inizia il {piano_sel['inizio']}. Prima fase: **{f['Fase']}**.")
-                elif info_fase["stato"] == "concluso":
-                    st.warning(f"⏳ Sei oltre la fine del programma «{piano_sel['nome']}» (settimana {info_fase['settimana']}). Ultima fase: **{f['Fase']}**.")
-                else:
-                    st.success(f"📌 Settimana {info_fase['settimana']} · fase attiva: **{f['Fase']}** — {f['Obiettivo']}")
-                st.caption(f"Focus del programma → 💪 {piano_sel['focus_fisico']} · 🏐 {piano_sel['focus_tecnico']} · 🧠 {piano_sel['focus_tattico']}")
-                sugg_obiettivo = MAP_FOCUS_OBIETTIVO.get(piano_sel.get("focus_tattico"))
-                nome_fase = f["Fase"].split("\u00b7")[-1].strip() if "\u00b7" in f["Fase"] else f["Fase"]
-                sugg_intensita = FASE_INTENSITA.get(nome_fase)
-                st.caption("💡 Obiettivo e intensità qui sotto sono già impostati sui suggerimenti del programma (puoi cambiarli).")
-
-    obj_index = OBIETTIVI.index(sugg_obiettivo) if sugg_obiettivo in OBIETTIVI else 0
-    int_index = INTENSITA.index(sugg_intensita) if sugg_intensita in INTENSITA else 1
-
-    c2, c3, c4 = st.columns(3)
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        data_seduta = st.date_input("Data", value=date.today())
     with c2:
-        obiettivo = st.selectbox("Obiettivo della seduta", OBIETTIVI, index=obj_index)
+        obiettivo = st.selectbox("Obiettivo della seduta", OBIETTIVI)
     with c3:
-        intensita = st.selectbox("Intensit\u00e0", INTENSITA, index=int_index)
+        intensita = st.selectbox("Intensit\u00e0", INTENSITA, index=1)
     with c4:
         durata = st.slider("Durata (min)", 60, 150, 90, step=15)
 
@@ -796,9 +546,6 @@ if menu == "📋 Programma Allenamenti":
             "intensita": intensita, "durata": int(durata),
             "presenti": int(n_presenti),
             "esercizi": seduta,
-            "disegni": [],
-            "programma": (piano_sel["nome"] if piano_sel else None),
-            "fase_programma": (info_fase["fase"]["Fase"] if info_fase and info_fase.get("fase") else None),
         }
 
     ult = st.session_state.get("_ultima_seduta")
@@ -807,117 +554,25 @@ if menu == "📋 Programma Allenamenti":
         st.subheader(f"🎯 Seduta — {ult['obiettivo']} ({ult['intensita']})")
         tot = sum(int(e["Durata_min"]) for e in ult["esercizi"])
         st.caption(f"📅 {ult['data']} · durata stimata **{tot} min** · {ult['presenti']} presenti")
-        if ult.get("programma"):
-            _fp = f" · {ult['fase_programma']}" if ult.get("fase_programma") else ""
-            st.caption(f"🔗 Collegata al programma «{ult['programma']}»{_fp}")
 
         fase_corrente = None
         icone = {"Riscaldamento": "🔥", "Centrale": "🏐", "Situazionale": "🆚", "Defaticamento": "🧘"}
-        for ei, e in enumerate(ult["esercizi"]):
+        for e in ult["esercizi"]:
             if e["Fase"] != fase_corrente:
                 fase_corrente = e["Fase"]
                 st.markdown(f"#### {icone.get(fase_corrente,'')} {fase_corrente}")
-            n_dis = len(e.get("disegni", []))
             st.markdown(
                 f"<div class='block-seduta'><b>{e['Nome']}</b> "
-                f"<span style='color:#ffbf69'>· {e['Durata_min']} min · {e['Fondamentale']} · {e['Livello']}</span><br>"
+                f"<span style='color:#ffbf69'>· {e['Durata_min']} min · {e['Fondamentale']}</span> {badge_livello(e['Livello'])}<br>"
                 f"<span style='color:#c9d6ea'>{e['Descrizione']}</span><br>"
                 f"<span style='color:#7f93b0;font-size:0.9em'>🔁 Variante: {e['Varianti']}</span></div>",
                 unsafe_allow_html=True,
             )
-            with st.expander(f"🎨 Disegni di questo esercizio" + (f" ({n_dis})" if n_dis else "")):
-                components.html(TACTIC_BOARD_HTML, height=520)
-                st.caption("Disegna lo schema, premi **Scarica PNG**, poi caricalo qui sotto per allegarlo a QUESTO esercizio.")
-                upx = st.file_uploader("Allega disegno all'esercizio (PNG o JPG)", type=["png", "jpg", "jpeg"], key=f"upex_{ei}")
-                if upx is not None and st.button("➕ Allega all'esercizio", key=f"addex_{ei}"):
-                    b64 = base64.b64encode(upx.getvalue()).decode()
-                    e.setdefault("disegni", []).append({"nome": upx.name, "b64": b64})
-                    st.session_state._ultima_seduta = ult
-                    st.success("Disegno allegato all'esercizio!")
-                    st.rerun()
-                for dj, d in enumerate(e.get("disegni", [])):
-                    st.image(base64.b64decode(d["b64"]), caption=d.get("nome", ""), use_container_width=True)
-                    if st.button("🗑️ Rimuovi", key=f"delexdis_{ei}_{dj}"):
-                        e["disegni"].pop(dj)
-                        st.session_state._ultima_seduta = ult
-                        st.rerun()
-            with st.expander("✏️ Modifica / sostituisci questo esercizio"):
-                df_lib = st.session_state.esercizi
-                alt = df_lib[df_lib["Fase"] == e["Fase"]]
-                nomi_alt = alt["Nome"].tolist()
-                idx_cur = nomi_alt.index(e["Nome"]) if e["Nome"] in nomi_alt else 0
-                nuovo = st.selectbox("Sostituisci con (esercizi della stessa fase)", nomi_alt,
-                                     index=idx_cur, key=f"swap_{ei}")
-                ca, cb, cc = st.columns([2, 1, 1])
-                nd = ca.number_input("Durata (min)", 1, 60, int(e["Durata_min"]), key=f"dur_{ei}")
-                if cb.button("✅ Applica", key=f"apply_{ei}"):
-                    row = alt[alt["Nome"] == nuovo].iloc[0].to_dict()
-                    row["Durata_min"] = int(nd)
-                    row["disegni"] = e.get("disegni", [])
-                    ult["esercizi"][ei] = row
-                    st.session_state._ultima_seduta = ult
-                    st.rerun()
-                if cc.button("🗑️ Rimuovi", key=f"rmex_{ei}"):
-                    ult["esercizi"].pop(ei)
-                    st.session_state._ultima_seduta = ult
-                    st.rerun()
-
-        st.markdown("---")
-        with st.expander("➕ Aggiungi un esercizio alla seduta"):
-            df_add = st.session_state.esercizi
-            fase_add = st.selectbox("Fase", ["Riscaldamento", "Centrale", "Situazionale", "Defaticamento"], key="addfase")
-            pool_add = df_add[df_add["Fase"] == fase_add]
-            if pool_add.empty:
-                st.caption("Nessun esercizio in libreria per questa fase.")
-            else:
-                nome_add = st.selectbox("Esercizio", pool_add["Nome"].tolist(), key="addnome")
-                dur_def = int(pool_add[pool_add["Nome"] == nome_add].iloc[0]["Durata_min"])
-                dur_add = st.number_input("Durata (min)", 1, 60, dur_def, key="adddur")
-                if st.button("➕ Aggiungi alla seduta", key="addbtn"):
-                    row = pool_add[pool_add["Nome"] == nome_add].iloc[0].to_dict()
-                    row["Durata_min"] = int(dur_add)
-                    row["disegni"] = []
-                    ult["esercizi"].append(row)
-                    ordine = {"Riscaldamento": 0, "Centrale": 1, "Situazionale": 2, "Defaticamento": 3}
-                    ult["esercizi"].sort(key=lambda x: ordine.get(x.get("Fase"), 9))
-                    st.session_state._ultima_seduta = ult
-                    st.rerun()
-
-        st.markdown("---")
-        st.markdown("#### 🎨 Disegni generali della seduta (facoltativo)")
-        st.caption("Per uno schema non legato a un singolo esercizio. I disegni dei singoli esercizi si allegano nel blocco di ciascun esercizio qui sopra.")
-        up = st.file_uploader("Allega un disegno/schema generale (PNG o JPG)", type=["png", "jpg", "jpeg"], key="up_disegno")
-        if up is not None and st.button("➕ Allega disegno alla seduta"):
-            b64 = base64.b64encode(up.getvalue()).decode()
-            ult.setdefault("disegni", []).append({"nome": up.name, "b64": b64})
-            st.session_state._ultima_seduta = ult
-            st.success("Disegno allegato alla seduta!")
-            st.rerun()
-        for di, d in enumerate(ult.get("disegni", [])):
-            st.image(base64.b64decode(d["b64"]), caption=d.get("nome", ""), use_container_width=True)
-            if st.button(f"🗑️ Rimuovi disegno", key=f"deldis_{di}"):
-                ult["disegni"].pop(di)
-                st.session_state._ultima_seduta = ult
-                st.rerun()
 
         if st.button("📅 Salva questa seduta nel calendario", type="primary"):
             st.session_state.sedute.append(ult)
             save_state()
             st.success("Seduta salvata nel calendario!")
-
-        try:
-            pdf_bytes = esporta_seduta_pdf(ult)
-            st.download_button(
-                "⬇️ Esporta l'intera seduta in PDF",
-                data=pdf_bytes,
-                file_name=f"seduta_{ult['data']}.pdf",
-                mime="application/pdf",
-                use_container_width=True,
-            )
-        except ImportError:
-            st.info("Per l'esportazione PDF installa la libreria: `pip install fpdf2`")
-        except Exception as _ex:
-            st.warning(f"Impossibile generare il PDF: {_ex}")
 
 # ============================================================
 # LIBRERIA ESERCIZI
@@ -977,7 +632,7 @@ if menu == "📚 Libreria Esercizi":
                               f"style='color:#ffbf69;font-size:0.85em'>🔗 Fonte online</a>")
             cc1.markdown(
                 f"<div class='ex-card'><b>{e['Nome']}</b> "
-                f"<span style='color:#ffbf69'>· {e['Fondamentale']} · {e['Fase']} · {e['Durata_min']}min · min {e['Min_Giocatrici']} gig. · {e['Livello']}</span><br>"
+                f"<span style='color:#ffbf69'>· {e['Fondamentale']} · {e['Fase']} · {e['Durata_min']}min · min {e['Min_Giocatrici']} gig.</span> {badge_livello(e['Livello'])}<br>"
                 f"<span style='color:#c9d6ea'>{e['Descrizione']}</span><br>"
                 f"<span style='color:#7f93b0;font-size:0.9em'>🔁 {e['Varianti']}</span>{fonte_html}</div>",
                 unsafe_allow_html=True,
@@ -1076,25 +731,6 @@ if menu == "🗓️ Calendario":
                         fase_corrente = e["Fase"]
                         st.markdown(f"**{fase_corrente}**")
                     st.markdown(f"- {e['Nome']} ({e['Durata_min']} min) — _{e['Descrizione']}_")
-                    for d in e.get("disegni", []):
-                        st.image(base64.b64decode(d["b64"]), caption=f"{e['Nome']} — {d.get('nome','')}", use_container_width=True)
-                if s.get("disegni"):
-                    st.markdown("**Disegni generali**")
-                for d in s.get("disegni", []):
-                    st.image(base64.b64decode(d["b64"]), caption=d.get("nome", ""), use_container_width=True)
-                try:
-                    pdf_bytes = esporta_seduta_pdf(s)
-                    st.download_button(
-                        "⬇️ Esporta in PDF",
-                        data=pdf_bytes,
-                        file_name=f"seduta_{s['data']}.pdf",
-                        mime="application/pdf",
-                        key=f"pdf_{i}",
-                    )
-                except ImportError:
-                    st.caption("Installa `fpdf2` per l'export PDF (pip install fpdf2).")
-                except Exception:
-                    pass
                 if st.button("🗑️ Elimina seduta", key=f"delsed_{i}"):
                     st.session_state.sedute.remove(s)
                     save_state()
@@ -1108,152 +744,3 @@ if menu == "🗓️ Calendario":
         dfc["Carico"] = dfc["Intensit\u00e0"].map(pesi)
         st.bar_chart(dfc.set_index("Data")["Carico"])
         st.caption("Consiglio: evita due sedute a carico alto consecutive e programma uno scarico prima della gara.")
-
-# ============================================================
-# CRESCITA & SCOUTING
-# ============================================================
-if menu == "📈 Crescita & Scouting":
-    st.header("📈 Crescita & Scouting")
-    st.caption("Individua dove migliorare, costruisci il programma fisico-tecnico-tattico a lungo termine e raccogli lo scouting sulle avversarie.")
-    tab_migl, tab_prog, tab_scout = st.tabs([
-        "🎯 Dove posso migliorare",
-        "🗓️ Programma a lungo termine",
-        "🔍 Scouting",
-    ])
-    with tab_migl:
-        st.caption("Valuta ogni fondamentale da 1 a 5: l'app individua le aree pi\u00f9 deboli e suggerisce esercizi mirati dalla libreria.")
-        if not st.session_state.rosa:
-            st.info("Aggiungi prima le giocatrici nella sezione **Rosa**.")
-        else:
-            nomi = [f"#{g['Numero']} {g['Nome']} \u00b7 {RUOLI.get(g['Ruolo'], g['Ruolo'])}" for g in st.session_state.rosa]
-            idx = st.selectbox("Giocatrice", range(len(nomi)), format_func=lambda i: nomi[i])
-            g = st.session_state.rosa[idx]
-            val = g.get("Valutazioni", {})
-            with st.form(f"val_form_{idx}"):
-                st.markdown("#### Valutazione fondamentali (1 = da migliorare \u00b7 5 = punto di forza)")
-                nuove = {}
-                cols = st.columns(len(FONDAMENTALI))
-                for j, f in enumerate(FONDAMENTALI):
-                    nuove[f] = cols[j].slider(f, 1, 5, int(val.get(f, 3)), key=f"val_{idx}_{f}")
-                note_m = st.text_area("Note sullo sviluppo della giocatrice", value=g.get("NoteSviluppo", ""))
-                if st.form_submit_button("💾 Salva valutazione", use_container_width=True):
-                    st.session_state.rosa[idx]["Valutazioni"] = nuove
-                    st.session_state.rosa[idx]["NoteSviluppo"] = note_m.strip()
-                    save_state()
-                    st.success("Valutazione salvata!")
-                    st.rerun()
-            if val:
-                ordinate = sorted(val.items(), key=lambda kv: kv[1])
-                deboli = [f for f, v in ordinate if v <= 2][:3] or [ordinate[0][0]]
-                st.markdown("#### 🔻 Aree su cui lavorare")
-                st.markdown(" \u00b7 ".join(f"**{d}** ({val[d]}/5)" for d in deboli))
-                df = st.session_state.esercizi
-                sugg = df[df["Fondamentale"].isin(deboli)]
-                st.markdown("#### 🏐 Esercizi consigliati per migliorare")
-                if sugg.empty:
-                    st.caption("Nessun esercizio in libreria per queste aree. Aggiungine dalla sezione Libreria o Esercizi Online.")
-                else:
-                    for _, e in sugg.head(8).iterrows():
-                        st.markdown(
-                            f"<div class='ex-card'><b>{e['Nome']}</b> "
-                            f"<span style='color:#ffbf69'>\u00b7 {e['Fondamentale']} \u00b7 {e['Durata_min']}min \u00b7 {e['Livello']}</span><br>"
-                            f"<span style='color:#c9d6ea'>{e['Descrizione']}</span></div>",
-                            unsafe_allow_html=True,
-                        )
-            else:
-                st.info("Compila e salva la valutazione per vedere le aree di miglioramento e gli esercizi consigliati.")
-            st.markdown("---")
-            st.markdown("### 📊 Panoramica squadra")
-            valutate = [gg for gg in st.session_state.rosa if gg.get("Valutazioni")]
-            if valutate:
-                medie = {}
-                for f in FONDAMENTALI:
-                    vals = [gg["Valutazioni"].get(f) for gg in valutate if gg["Valutazioni"].get(f)]
-                    if vals:
-                        medie[f] = round(sum(vals) / len(vals), 1)
-                if medie:
-                    st.bar_chart(pd.DataFrame({"Media (1-5)": medie}))
-                    deboli_team = sorted(medie.items(), key=lambda kv: kv[1])[:2]
-                    st.caption("Aree pi\u00f9 deboli della squadra: " + " \u00b7 ".join(f"{f} ({v}/5)" for f, v in deboli_team))
-                st.caption(f"Giocatrici valutate: {len(valutate)}/{len(st.session_state.rosa)}")
-            else:
-                st.caption("Nessuna valutazione registrata ancora.")
-    with tab_prog:
-        st.caption("Costruisci un programma pluri-settimanale con focus fisico, tecnico e tattico. Ogni fase (mesociclo) evidenzia le priorit\u00e0 del periodo.")
-        with st.form("form_prog"):
-            c1, c2, c3 = st.columns(3)
-            with c1:
-                p_nome = st.text_input("Nome del programma", value="Programma stagionale")
-                p_start = st.date_input("Data inizio", value=date.today(), key="prog_start")
-            with c2:
-                p_sett = st.number_input("Durata (settimane)", 4, 40, 12)
-                p_persett = st.number_input("Sedute a settimana", 1, 6, 3)
-            with c3:
-                foc_fis = st.selectbox("Focus fisico", AREE_SVILUPPO["Fisico"])
-                foc_tec = st.selectbox("Focus tecnico", AREE_SVILUPPO["Tecnico"])
-                foc_tat = st.selectbox("Focus tattico", AREE_SVILUPPO["Tattico"])
-            if st.form_submit_button("⚡ Genera programma a lungo termine", type="primary", use_container_width=True):
-                piano = genera_programma_lt(p_nome, p_start, int(p_sett), int(p_persett), foc_fis, foc_tec, foc_tat)
-                st.session_state.piani.append(piano)
-                save_state()
-                st.success("Programma generato e salvato!")
-                st.rerun()
-        if st.session_state.piani:
-            st.markdown("---")
-            st.markdown("### 📚 Programmi salvati")
-            for pi in range(len(st.session_state.piani) - 1, -1, -1):
-                piano = st.session_state.piani[pi]
-                with st.expander(f"🗓️ {piano['nome']} \u2014 dal {piano['inizio']} \u00b7 {piano['settimane']} sett. \u00b7 {piano['per_settimana']}/sett."):
-                    st.markdown(f"**Focus:** 💪 {piano['focus_fisico']} \u00b7 🏐 {piano['focus_tecnico']} \u00b7 🧠 {piano['focus_tattico']}")
-                    st.dataframe(pd.DataFrame(piano["fasi"]), use_container_width=True, hide_index=True)
-                    if st.button("🗑️ Elimina programma", key=f"delpiano_{pi}"):
-                        st.session_state.piani.pop(pi)
-                        save_state()
-                        st.rerun()
-        else:
-            st.info("Nessun programma ancora. Compila i campi qui sopra e genera il tuo piano a lungo termine.")
-    with tab_scout:
-        st.caption("Raccogli informazioni sulle squadre avversarie: sistema di gioco, giocatrici pericolose, punti di forza e debolezze.")
-        with st.expander("➕ Nuovo report scouting", expanded=not st.session_state.scouting):
-            with st.form("form_scout", clear_on_submit=True):
-                c1, c2 = st.columns(2)
-                with c1:
-                    s_avv = st.text_input("Squadra avversaria")
-                    s_data = st.date_input("Data osservazione", value=date.today(), key="scout_data")
-                    s_sistema = st.text_input("Sistema di gioco (es. 5-1, 4-2)")
-                    s_peric = st.text_input("Giocatrici pericolose (numeri / nomi / ruoli)")
-                with c2:
-                    s_forza = st.text_area("Punti di forza")
-                    s_deboli = st.text_area("Punti deboli / come attaccarle")
-                s_note = st.text_area("Note tattiche (battuta, ricezione, muro-difesa...)")
-                if st.form_submit_button("💾 Salva report", use_container_width=True):
-                    if s_avv.strip():
-                        st.session_state.scouting.append({
-                            "avversario": s_avv.strip(),
-                            "data": s_data.isoformat(),
-                            "sistema": s_sistema.strip(),
-                            "pericolose": s_peric.strip(),
-                            "forza": s_forza.strip(),
-                            "deboli": s_deboli.strip(),
-                            "note": s_note.strip(),
-                        })
-                        save_state()
-                        st.success("Report scouting salvato!")
-                        st.rerun()
-                    else:
-                        st.warning("Inserisci almeno il nome della squadra avversaria.")
-        if st.session_state.scouting:
-            st.markdown("### 🗂️ Report salvati")
-            for sc in sorted(st.session_state.scouting, key=lambda x: x["data"], reverse=True):
-                titolo = f"🔍 {sc['avversario']} \u2014 {sc['data']} \u00b7 sistema {sc['sistema'] or 'n/d'}"
-                with st.expander(titolo):
-                    st.markdown(f"**⚠️ Giocatrici pericolose:** {sc['pericolose'] or '\u2014'}")
-                    st.markdown(f"**💪 Punti di forza:** {sc['forza'] or '\u2014'}")
-                    st.markdown(f"**🎯 Punti deboli / come attaccarle:** {sc['deboli'] or '\u2014'}")
-                    st.markdown(f"**📝 Note tattiche:** {sc['note'] or '\u2014'}")
-                    if st.button("🗑️ Elimina report", key=f"delscout_{sc['avversario']}_{sc['data']}"):
-                        st.session_state.scouting.remove(sc)
-                        save_state()
-                        st.rerun()
-        else:
-            st.info("Nessun report scouting ancora registrato.")
