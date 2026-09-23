@@ -42,6 +42,13 @@ OBIETTIVI = [
 
 INTENSITA = ["Scarico", "Medio", "Carico", "Pre-partita"]
 
+# Aree di sviluppo per il programma a lungo termine
+AREE_SVILUPPO = {
+    "Fisico": ["Forza", "Potenza / salto", "Rapidit\u00e0 / agilit\u00e0", "Resistenza", "Mobilit\u00e0 / prevenzione"],
+    "Tecnico": ["Battuta", "Ricezione", "Palleggio / alzata", "Attacco", "Muro", "Difesa"],
+    "Tattico": ["Cambio palla (side-out)", "Fase break", "Lettura / anticipo", "Rotazioni", "Sistemi di ricezione", "Comunicazione"],
+}
+
 # ============================================================
 # CSS
 # ============================================================
@@ -122,6 +129,8 @@ def save_state():
         "rosa": st.session_state.rosa,
         "esercizi": st.session_state.esercizi.to_dict("records"),
         "sedute": st.session_state.sedute,
+        "scouting": st.session_state.get("scouting", []),
+        "piani": st.session_state.get("piani", []),
     }
     tmp = tempfile.NamedTemporaryFile(delete=False, dir=".")
     try:
@@ -144,6 +153,8 @@ def load_state():
         es = data.get("esercizi", [])
         st.session_state.esercizi = pd.DataFrame(es) if es else pd.DataFrame(ESERCIZI_DEFAULT)
         st.session_state.sedute = data.get("sedute", [])
+        st.session_state.scouting = data.get("scouting", [])
+        st.session_state.piani = data.get("piani", [])
         return True
     except Exception:
         return False
@@ -153,6 +164,8 @@ if "initialized" not in st.session_state:
     st.session_state.rosa = []
     st.session_state.esercizi = pd.DataFrame(ESERCIZI_DEFAULT)
     st.session_state.sedute = []
+    st.session_state.scouting = []
+    st.session_state.piani = []
     load_state()
     st.session_state.initialized = True
 
@@ -217,6 +230,52 @@ def genera_seduta(obiettivo, durata_tot, intensita, n_presenti, seed=None):
                 break
         # garantisci almeno un esercizio per fase se il pool non e' vuoto
     return seduta, budget
+
+
+def genera_programma_lt(nome, start, settimane, per_sett, foc_fis, foc_tec, foc_tat):
+    """Crea un programma pluri-settimanale (mesocicli) con progressione fisica, tecnica e tattica."""
+    blocchi = [
+        ("Fase 1 \u00b7 Costruzione", "Base generale: volume alto, tecnica pulita, condizionamento generale.", 0.30,
+         "Forza generale + mobilit\u00e0", "Fondamentali di base ({tec})", "Concetti base ({tat})"),
+        ("Fase 2 \u00b7 Sviluppo", "Aumento dell'intensit\u00e0: tecnica sotto carico e primi automatismi.", 0.30,
+         "Forza-potenza ({fis})", "{tec} sotto pressione", "{tat} a reparti / a coppie"),
+        ("Fase 3 \u00b7 Specifica-Tattica", "Lavoro situazionale: sistemi di gioco e intensit\u00e0 gara.", 0.25,
+         "Potenza / reattivit\u00e0 ({fis})", "{tec} in situazione di gioco", "{tat} in 6vs6 / sistemi"),
+        ("Fase 4 \u00b7 Picco-Mantenimento", "Scarico modulato, rifinitura e gestione della condizione verso le gare.", 0.15,
+         "Mantenimento + prevenzione", "Rifinitura {tec}", "Automatismi gara ({tat})"),
+    ]
+    fasi = []
+    assegnate = 0
+    for k, (titolo, desc, quota, fis_t, tec_t, tat_t) in enumerate(blocchi):
+        if k < len(blocchi) - 1:
+            n = max(1, round(settimane * quota))
+        else:
+            n = max(1, settimane - assegnate)
+        w_from = assegnate + 1
+        w_to = min(settimane, assegnate + n)
+        if w_from > settimane:
+            break
+        fasi.append({
+            "Fase": titolo,
+            "Settimane": f"{w_from}-{w_to}",
+            "\U0001F4AA Fisico": fis_t.format(fis=foc_fis),
+            "\U0001F3D0 Tecnico": tec_t.format(tec=foc_tec),
+            "\U0001F9E0 Tattico": tat_t.format(tat=foc_tat),
+            "Obiettivo": desc,
+        })
+        assegnate = w_to
+        if assegnate >= settimane:
+            break
+    return {
+        "nome": nome.strip() or "Programma",
+        "inizio": start.isoformat(),
+        "settimane": int(settimane),
+        "per_settimana": int(per_sett),
+        "focus_fisico": foc_fis,
+        "focus_tecnico": foc_tec,
+        "focus_tattico": foc_tat,
+        "fasi": fasi,
+    }
 
 # ============================================================
 # ESERCIZI DA INTERNET
@@ -318,7 +377,7 @@ with st.sidebar:
 # ============================================================
 menu = st.radio(
     "",
-    ["🏠 Dashboard", "👥 Rosa", "📋 Programma Allenamenti", "📚 Libreria Esercizi", "🌐 Esercizi Online", "🗓️ Calendario"],
+    ["🏠 Dashboard", "👥 Rosa", "📋 Programma Allenamenti", "📈 Crescita & Scouting", "📚 Libreria Esercizi", "🌐 Esercizi Online", "🗓️ Calendario"],
     horizontal=True,
     label_visibility="collapsed",
 )
@@ -651,3 +710,152 @@ if menu == "🗓️ Calendario":
         dfc["Carico"] = dfc["Intensit\u00e0"].map(pesi)
         st.bar_chart(dfc.set_index("Data")["Carico"])
         st.caption("Consiglio: evita due sedute a carico alto consecutive e programma uno scarico prima della gara.")
+
+# ============================================================
+# CRESCITA & SCOUTING
+# ============================================================
+if menu == "📈 Crescita & Scouting":
+    st.header("📈 Crescita & Scouting")
+    st.caption("Individua dove migliorare, costruisci il programma fisico-tecnico-tattico a lungo termine e raccogli lo scouting sulle avversarie.")
+    tab_migl, tab_prog, tab_scout = st.tabs([
+        "🎯 Dove posso migliorare",
+        "🗓️ Programma a lungo termine",
+        "🔍 Scouting",
+    ])
+    with tab_migl:
+        st.caption("Valuta ogni fondamentale da 1 a 5: l'app individua le aree pi\u00f9 deboli e suggerisce esercizi mirati dalla libreria.")
+        if not st.session_state.rosa:
+            st.info("Aggiungi prima le giocatrici nella sezione **Rosa**.")
+        else:
+            nomi = [f"#{g['Numero']} {g['Nome']} \u00b7 {RUOLI.get(g['Ruolo'], g['Ruolo'])}" for g in st.session_state.rosa]
+            idx = st.selectbox("Giocatrice", range(len(nomi)), format_func=lambda i: nomi[i])
+            g = st.session_state.rosa[idx]
+            val = g.get("Valutazioni", {})
+            with st.form(f"val_form_{idx}"):
+                st.markdown("#### Valutazione fondamentali (1 = da migliorare \u00b7 5 = punto di forza)")
+                nuove = {}
+                cols = st.columns(len(FONDAMENTALI))
+                for j, f in enumerate(FONDAMENTALI):
+                    nuove[f] = cols[j].slider(f, 1, 5, int(val.get(f, 3)), key=f"val_{idx}_{f}")
+                note_m = st.text_area("Note sullo sviluppo della giocatrice", value=g.get("NoteSviluppo", ""))
+                if st.form_submit_button("💾 Salva valutazione", use_container_width=True):
+                    st.session_state.rosa[idx]["Valutazioni"] = nuove
+                    st.session_state.rosa[idx]["NoteSviluppo"] = note_m.strip()
+                    save_state()
+                    st.success("Valutazione salvata!")
+                    st.rerun()
+            if val:
+                ordinate = sorted(val.items(), key=lambda kv: kv[1])
+                deboli = [f for f, v in ordinate if v <= 2][:3] or [ordinate[0][0]]
+                st.markdown("#### 🔻 Aree su cui lavorare")
+                st.markdown(" \u00b7 ".join(f"**{d}** ({val[d]}/5)" for d in deboli))
+                df = st.session_state.esercizi
+                sugg = df[df["Fondamentale"].isin(deboli)]
+                st.markdown("#### 🏐 Esercizi consigliati per migliorare")
+                if sugg.empty:
+                    st.caption("Nessun esercizio in libreria per queste aree. Aggiungine dalla sezione Libreria o Esercizi Online.")
+                else:
+                    for _, e in sugg.head(8).iterrows():
+                        st.markdown(
+                            f"<div class='ex-card'><b>{e['Nome']}</b> "
+                            f"<span style='color:#ffbf69'>\u00b7 {e['Fondamentale']} \u00b7 {e['Durata_min']}min \u00b7 {e['Livello']}</span><br>"
+                            f"<span style='color:#c9d6ea'>{e['Descrizione']}</span></div>",
+                            unsafe_allow_html=True,
+                        )
+            else:
+                st.info("Compila e salva la valutazione per vedere le aree di miglioramento e gli esercizi consigliati.")
+            st.markdown("---")
+            st.markdown("### 📊 Panoramica squadra")
+            valutate = [gg for gg in st.session_state.rosa if gg.get("Valutazioni")]
+            if valutate:
+                medie = {}
+                for f in FONDAMENTALI:
+                    vals = [gg["Valutazioni"].get(f) for gg in valutate if gg["Valutazioni"].get(f)]
+                    if vals:
+                        medie[f] = round(sum(vals) / len(vals), 1)
+                if medie:
+                    st.bar_chart(pd.DataFrame({"Media (1-5)": medie}))
+                    deboli_team = sorted(medie.items(), key=lambda kv: kv[1])[:2]
+                    st.caption("Aree pi\u00f9 deboli della squadra: " + " \u00b7 ".join(f"{f} ({v}/5)" for f, v in deboli_team))
+                st.caption(f"Giocatrici valutate: {len(valutate)}/{len(st.session_state.rosa)}")
+            else:
+                st.caption("Nessuna valutazione registrata ancora.")
+    with tab_prog:
+        st.caption("Costruisci un programma pluri-settimanale con focus fisico, tecnico e tattico. Ogni fase (mesociclo) evidenzia le priorit\u00e0 del periodo.")
+        with st.form("form_prog"):
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                p_nome = st.text_input("Nome del programma", value="Programma stagionale")
+                p_start = st.date_input("Data inizio", value=date.today(), key="prog_start")
+            with c2:
+                p_sett = st.number_input("Durata (settimane)", 4, 40, 12)
+                p_persett = st.number_input("Sedute a settimana", 1, 6, 3)
+            with c3:
+                foc_fis = st.selectbox("Focus fisico", AREE_SVILUPPO["Fisico"])
+                foc_tec = st.selectbox("Focus tecnico", AREE_SVILUPPO["Tecnico"])
+                foc_tat = st.selectbox("Focus tattico", AREE_SVILUPPO["Tattico"])
+            if st.form_submit_button("⚡ Genera programma a lungo termine", type="primary", use_container_width=True):
+                piano = genera_programma_lt(p_nome, p_start, int(p_sett), int(p_persett), foc_fis, foc_tec, foc_tat)
+                st.session_state.piani.append(piano)
+                save_state()
+                st.success("Programma generato e salvato!")
+                st.rerun()
+        if st.session_state.piani:
+            st.markdown("---")
+            st.markdown("### 📚 Programmi salvati")
+            for pi in range(len(st.session_state.piani) - 1, -1, -1):
+                piano = st.session_state.piani[pi]
+                with st.expander(f"🗓️ {piano['nome']} \u2014 dal {piano['inizio']} \u00b7 {piano['settimane']} sett. \u00b7 {piano['per_settimana']}/sett."):
+                    st.markdown(f"**Focus:** 💪 {piano['focus_fisico']} \u00b7 🏐 {piano['focus_tecnico']} \u00b7 🧠 {piano['focus_tattico']}")
+                    st.dataframe(pd.DataFrame(piano["fasi"]), use_container_width=True, hide_index=True)
+                    if st.button("🗑️ Elimina programma", key=f"delpiano_{pi}"):
+                        st.session_state.piani.pop(pi)
+                        save_state()
+                        st.rerun()
+        else:
+            st.info("Nessun programma ancora. Compila i campi qui sopra e genera il tuo piano a lungo termine.")
+    with tab_scout:
+        st.caption("Raccogli informazioni sulle squadre avversarie: sistema di gioco, giocatrici pericolose, punti di forza e debolezze.")
+        with st.expander("➕ Nuovo report scouting", expanded=not st.session_state.scouting):
+            with st.form("form_scout", clear_on_submit=True):
+                c1, c2 = st.columns(2)
+                with c1:
+                    s_avv = st.text_input("Squadra avversaria")
+                    s_data = st.date_input("Data osservazione", value=date.today(), key="scout_data")
+                    s_sistema = st.text_input("Sistema di gioco (es. 5-1, 4-2)")
+                    s_peric = st.text_input("Giocatrici pericolose (numeri / nomi / ruoli)")
+                with c2:
+                    s_forza = st.text_area("Punti di forza")
+                    s_deboli = st.text_area("Punti deboli / come attaccarle")
+                s_note = st.text_area("Note tattiche (battuta, ricezione, muro-difesa...)")
+                if st.form_submit_button("💾 Salva report", use_container_width=True):
+                    if s_avv.strip():
+                        st.session_state.scouting.append({
+                            "avversario": s_avv.strip(),
+                            "data": s_data.isoformat(),
+                            "sistema": s_sistema.strip(),
+                            "pericolose": s_peric.strip(),
+                            "forza": s_forza.strip(),
+                            "deboli": s_deboli.strip(),
+                            "note": s_note.strip(),
+                        })
+                        save_state()
+                        st.success("Report scouting salvato!")
+                        st.rerun()
+                    else:
+                        st.warning("Inserisci almeno il nome della squadra avversaria.")
+        if st.session_state.scouting:
+            st.markdown("### 🗂️ Report salvati")
+            for sc in sorted(st.session_state.scouting, key=lambda x: x["data"], reverse=True):
+                titolo = f"🔍 {sc['avversario']} \u2014 {sc['data']} \u00b7 sistema {sc['sistema'] or 'n/d'}"
+                with st.expander(titolo):
+                    st.markdown(f"**⚠️ Giocatrici pericolose:** {sc['pericolose'] or '\u2014'}")
+                    st.markdown(f"**💪 Punti di forza:** {sc['forza'] or '\u2014'}")
+                    st.markdown(f"**🎯 Punti deboli / come attaccarle:** {sc['deboli'] or '\u2014'}")
+                    st.markdown(f"**📝 Note tattiche:** {sc['note'] or '\u2014'}")
+                    if st.button("🗑️ Elimina report", key=f"delscout_{sc['avversario']}_{sc['data']}"):
+                        st.session_state.scouting.remove(sc)
+                        save_state()
+                        st.rerun()
+        else:
+            st.info("Nessun report scouting ancora registrato.")
