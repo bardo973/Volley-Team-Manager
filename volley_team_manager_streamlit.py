@@ -10,6 +10,8 @@ import urllib.request
 import urllib.parse
 import re
 import html as _html
+import base64
+import streamlit.components.v1 as components
 from datetime import datetime, date, timedelta
 
 # ============================================================
@@ -49,6 +51,46 @@ AREE_SVILUPPO = {
     "Tattico": ["Cambio palla (side-out)", "Fase break", "Lettura / anticipo", "Rotazioni", "Sistemi di ricezione", "Comunicazione"],
 }
 
+# Lavagna tattica (canvas HTML self-contained, nessuna libreria esterna)
+TACTIC_BOARD_HTML = """
+<div style="font-family:Segoe UI,Arial,sans-serif;color:#eaf1ff">
+  <div style="margin-bottom:8px;display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+    <label>Colore <input type="color" id="col" value="#ff9f1c"></label>
+    <label>Spessore <input type="range" id="siz" min="1" max="14" value="3"></label>
+    <button id="clr" style="padding:4px 12px;border-radius:8px;border:none;background:#26334f;color:#eaf1ff;cursor:pointer">Pulisci</button>
+    <button id="dl" style="padding:4px 12px;border-radius:8px;border:none;background:#ff9f1c;color:#1a1000;font-weight:700;cursor:pointer">Scarica PNG</button>
+  </div>
+  <canvas id="cv" width="700" height="400" style="border-radius:10px;border:1px solid #26334f;background:#0f6b3f;touch-action:none;max-width:100%"></canvas>
+</div>
+<script>
+(function(){
+  var cv=document.getElementById('cv'), ctx=cv.getContext('2d');
+  function court(){
+    ctx.clearRect(0,0,cv.width,cv.height);
+    ctx.fillStyle='#0f6b3f'; ctx.fillRect(0,0,cv.width,cv.height);
+    ctx.strokeStyle='#ffffff'; ctx.lineWidth=2;
+    var m=40; ctx.strokeRect(m,m,cv.width-2*m,cv.height-2*m);
+    ctx.beginPath(); ctx.moveTo(cv.width/2,m); ctx.lineTo(cv.width/2,cv.height-m); ctx.stroke();
+    var a3=(cv.width/2-m)/3;
+    ctx.setLineDash([6,6]);
+    ctx.beginPath(); ctx.moveTo(cv.width/2-a3,m); ctx.lineTo(cv.width/2-a3,cv.height-m); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cv.width/2+a3,m); ctx.lineTo(cv.width/2+a3,cv.height-m); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  court();
+  var drawing=false;
+  function pos(e){var r=cv.getBoundingClientRect();var t=e.touches?e.touches[0]:e;return{x:t.clientX-r.left,y:t.clientY-r.top};}
+  function start(e){drawing=true;var p=pos(e);ctx.beginPath();ctx.moveTo(p.x,p.y);e.preventDefault();}
+  function move(e){if(!drawing)return;var p=pos(e);ctx.strokeStyle=document.getElementById('col').value;ctx.lineWidth=document.getElementById('siz').value;ctx.lineCap='round';ctx.lineTo(p.x,p.y);ctx.stroke();e.preventDefault();}
+  function end(){drawing=false;}
+  cv.addEventListener('mousedown',start);cv.addEventListener('mousemove',move);window.addEventListener('mouseup',end);
+  cv.addEventListener('touchstart',start);cv.addEventListener('touchmove',move);cv.addEventListener('touchend',end);
+  document.getElementById('clr').addEventListener('click',court);
+  document.getElementById('dl').addEventListener('click',function(){var a=document.createElement('a');a.download='schema_seduta.png';a.href=cv.toDataURL('image/png');a.click();});
+})();
+</script>
+"""
+
 # ============================================================
 # CSS
 # ============================================================
@@ -71,6 +113,28 @@ st.markdown("""
         margin-bottom: 8px; border: 1px solid #26334f;
     }
     div[data-testid="stMetricValue"] { font-size: 1.7rem !important; font-weight: 700 !important; }
+    .player-card {
+        position: relative;
+        background: linear-gradient(135deg, #14213d 0%, #1b2c52 100%);
+        border-radius: 14px; padding: 14px 16px; margin-bottom: 12px;
+        border: 1px solid rgba(255,191,105,0.35);
+        box-shadow: 0 0 14px rgba(255,159,28,0.25), inset 0 0 12px rgba(255,159,28,0.05);
+        transition: all .2s ease;
+    }
+    .player-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 0 24px rgba(255,159,28,0.55), inset 0 0 18px rgba(255,159,28,0.08);
+    }
+    .player-card .pc-num {
+        font-size: 1.5rem; font-weight: 800; color: #ffb703;
+        text-shadow: 0 0 10px rgba(255,183,3,0.85);
+    }
+    .player-card .pc-name { font-size: 1.12rem; font-weight: 700; color: #eaf1ff; }
+    .player-card .pc-meta { color: #9fb3d1; font-size: .9em; }
+    .player-card .pc-badge {
+        display:inline-block; padding: 2px 10px; border-radius: 999px;
+        font-size: .8em; font-weight: 700; margin-top: 6px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -456,11 +520,20 @@ if menu == "👥 Rosa":
             if filtro and g["Ruolo"] not in filtro:
                 continue
             emoji = {"Disponibile": "🟢", "Infortunata": "🔴", "In recupero": "🟡", "Indisponibile": "⚪"}.get(g.get("Stato"), "⚪")
-            c1, c2, c3, c4 = st.columns([4, 2, 2, 1])
-            c1.markdown(f"**#{g['Numero']} {g['Nome']}**  \n<span style='color:#9fb3d1'>{RUOLI[g['Ruolo']]} · {g['Altezza']} cm</span>", unsafe_allow_html=True)
-            c2.markdown(f"{emoji} {g.get('Stato','')}")
-            c3.caption(g.get("Note", "") or "—")
-            with c4:
+            stato = g.get("Stato", "Disponibile")
+            colore = {"Disponibile": "#2ecc71", "Infortunata": "#ff5c5c", "In recupero": "#ffcf5c", "Indisponibile": "#8aa0bd"}.get(stato, "#8aa0bd")
+            nome_e = _html.escape(str(g.get("Nome", "")))
+            note_e = _html.escape(str(g.get("Note", "") or "—"))
+            cc1, cc2 = st.columns([5, 1])
+            cc1.markdown(
+                f"<div class='player-card' style='box-shadow:0 0 18px {colore}66, inset 0 0 14px {colore}22; border-color:{colore}88;'>"
+                f"<span class='pc-num'>#{g['Numero']}</span> &nbsp;<span class='pc-name'>{nome_e}</span><br>"
+                f"<span class='pc-meta'>{RUOLI[g['Ruolo']]} · {g['Altezza']} cm</span><br>"
+                f"<span class='pc-badge' style='background:{colore}22; color:{colore}; border:1px solid {colore}88;'>{emoji} {stato}</span>"
+                f"<br><span class='pc-meta'>📝 {note_e}</span></div>",
+                unsafe_allow_html=True,
+            )
+            with cc2:
                 nuovo_stato = st.selectbox("stato", ["Disponibile", "Infortunata", "In recupero", "Indisponibile"],
                                            index=["Disponibile", "Infortunata", "In recupero", "Indisponibile"].index(g.get("Stato", "Disponibile")),
                                            key=f"st_{i}", label_visibility="collapsed")
@@ -512,6 +585,7 @@ if menu == "📋 Programma Allenamenti":
             "intensita": intensita, "durata": int(durata),
             "presenti": int(n_presenti),
             "esercizi": seduta,
+            "disegni": [],
         }
 
     ult = st.session_state.get("_ultima_seduta")
@@ -534,6 +608,25 @@ if menu == "📋 Programma Allenamenti":
                 f"<span style='color:#7f93b0;font-size:0.9em'>🔁 Variante: {e['Varianti']}</span></div>",
                 unsafe_allow_html=True,
             )
+
+        st.markdown("---")
+        st.markdown("#### 🎨 Disegni e schemi della seduta")
+        with st.expander("✏️ Apri la lavagna tattica (disegna e scarica)"):
+            components.html(TACTIC_BOARD_HTML, height=520)
+            st.caption("Disegna lo schema sul campo, premi **Scarica PNG**, poi caricalo qui sotto per allegarlo alla seduta.")
+        up = st.file_uploader("Allega un disegno/schema (PNG o JPG)", type=["png", "jpg", "jpeg"], key="up_disegno")
+        if up is not None and st.button("➕ Allega disegno alla seduta"):
+            b64 = base64.b64encode(up.getvalue()).decode()
+            ult.setdefault("disegni", []).append({"nome": up.name, "b64": b64})
+            st.session_state._ultima_seduta = ult
+            st.success("Disegno allegato alla seduta!")
+            st.rerun()
+        for di, d in enumerate(ult.get("disegni", [])):
+            st.image(base64.b64decode(d["b64"]), caption=d.get("nome", ""), use_container_width=True)
+            if st.button(f"🗑️ Rimuovi disegno", key=f"deldis_{di}"):
+                ult["disegni"].pop(di)
+                st.session_state._ultima_seduta = ult
+                st.rerun()
 
         if st.button("📅 Salva questa seduta nel calendario", type="primary"):
             st.session_state.sedute.append(ult)
@@ -697,6 +790,8 @@ if menu == "🗓️ Calendario":
                         fase_corrente = e["Fase"]
                         st.markdown(f"**{fase_corrente}**")
                     st.markdown(f"- {e['Nome']} ({e['Durata_min']} min) — _{e['Descrizione']}_")
+                for d in s.get("disegni", []):
+                    st.image(base64.b64decode(d["b64"]), caption=d.get("nome", ""), use_container_width=True)
                 if st.button("🗑️ Elimina seduta", key=f"delsed_{i}"):
                     st.session_state.sedute.remove(s)
                     save_state()
