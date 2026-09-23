@@ -9,6 +9,7 @@ import random
 import urllib.request
 import urllib.parse
 import re
+import io
 import html as _html
 import base64
 import streamlit.components.v1 as components
@@ -341,6 +342,70 @@ def genera_programma_lt(nome, start, settimane, per_sett, foc_fis, foc_tec, foc_
         "fasi": fasi,
     }
 
+
+def _lat1(s):
+    """Rende una stringa compatibile con i font core del PDF (latin-1)."""
+    return str(s).encode("latin-1", "replace").decode("latin-1")
+
+
+def esporta_seduta_pdf(s):
+    """Genera un PDF completo della seduta (testo + disegni). Richiede fpdf2."""
+    from fpdf import FPDF
+    pdf = FPDF(format="A4")
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+    pdf.set_font("Helvetica", "B", 18)
+    pdf.cell(0, 10, _lat1("VolleyCoach - Seduta di allenamento"), ln=1)
+    pdf.set_draw_color(255, 159, 28)
+    pdf.set_line_width(0.6)
+    y = pdf.get_y()
+    pdf.line(10, y, 200, y)
+    pdf.ln(3)
+    tot = sum(int(e["Durata_min"]) for e in s["esercizi"])
+    pdf.set_font("Helvetica", "", 11)
+    info = (f"Data: {s['data']}    Obiettivo: {s['obiettivo']}    Intensita: {s['intensita']}    "
+            f"Durata: {tot} min    Presenti: {s.get('presenti', '-')}")
+    pdf.multi_cell(0, 7, _lat1(info))
+    pdf.ln(2)
+    fase_corrente = None
+    for e in s["esercizi"]:
+        if e["Fase"] != fase_corrente:
+            fase_corrente = e["Fase"]
+            pdf.ln(2)
+            pdf.set_font("Helvetica", "B", 13)
+            pdf.set_text_color(200, 120, 0)
+            pdf.cell(0, 8, _lat1(fase_corrente), ln=1)
+            pdf.set_text_color(20, 20, 20)
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.multi_cell(0, 6, _lat1(f"{e['Nome']}  ({e['Durata_min']} min - {e['Fondamentale']} - {e['Livello']})"))
+        pdf.set_font("Helvetica", "", 10)
+        if e.get("Descrizione"):
+            pdf.multi_cell(0, 5, _lat1(e["Descrizione"]))
+        if e.get("Varianti"):
+            pdf.set_font("Helvetica", "I", 9)
+            pdf.multi_cell(0, 5, _lat1(f"Variante: {e['Varianti']}"))
+        for d in e.get("disegni", []):
+            try:
+                pdf.image(io.BytesIO(base64.b64decode(d["b64"])), w=110)
+                pdf.ln(1)
+            except Exception:
+                pass
+        pdf.ln(2)
+    if s.get("disegni"):
+        pdf.ln(3)
+        pdf.set_font("Helvetica", "B", 12)
+        pdf.set_text_color(200, 120, 0)
+        pdf.cell(0, 7, _lat1("Disegni generali"), ln=1)
+        pdf.set_text_color(20, 20, 20)
+        for d in s["disegni"]:
+            try:
+                pdf.image(io.BytesIO(base64.b64decode(d["b64"])), w=110)
+                pdf.ln(1)
+            except Exception:
+                pass
+    data = pdf.output()
+    return data.encode("latin-1") if isinstance(data, str) else bytes(data)
+
 # ============================================================
 # ESERCIZI DA INTERNET
 # ============================================================
@@ -648,6 +713,20 @@ if menu == "📋 Programma Allenamenti":
             save_state()
             st.success("Seduta salvata nel calendario!")
 
+        try:
+            pdf_bytes = esporta_seduta_pdf(ult)
+            st.download_button(
+                "⬇️ Esporta l'intera seduta in PDF",
+                data=pdf_bytes,
+                file_name=f"seduta_{ult['data']}.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+            )
+        except ImportError:
+            st.info("Per l'esportazione PDF installa la libreria: `pip install fpdf2`")
+        except Exception as _ex:
+            st.warning(f"Impossibile generare il PDF: {_ex}")
+
 # ============================================================
 # LIBRERIA ESERCIZI
 # ============================================================
@@ -811,6 +890,19 @@ if menu == "🗓️ Calendario":
                     st.markdown("**Disegni generali**")
                 for d in s.get("disegni", []):
                     st.image(base64.b64decode(d["b64"]), caption=d.get("nome", ""), use_container_width=True)
+                try:
+                    pdf_bytes = esporta_seduta_pdf(s)
+                    st.download_button(
+                        "⬇️ Esporta in PDF",
+                        data=pdf_bytes,
+                        file_name=f"seduta_{s['data']}.pdf",
+                        mime="application/pdf",
+                        key=f"pdf_{i}",
+                    )
+                except ImportError:
+                    st.caption("Installa `fpdf2` per l'export PDF (pip install fpdf2).")
+                except Exception:
+                    pass
                 if st.button("🗑️ Elimina seduta", key=f"delsed_{i}"):
                     st.session_state.sedute.remove(s)
                     save_state()
