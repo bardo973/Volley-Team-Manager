@@ -597,10 +597,11 @@ if menu == "📋 Programma Allenamenti":
 
         fase_corrente = None
         icone = {"Riscaldamento": "🔥", "Centrale": "🏐", "Situazionale": "🆚", "Defaticamento": "🧘"}
-        for e in ult["esercizi"]:
+        for ei, e in enumerate(ult["esercizi"]):
             if e["Fase"] != fase_corrente:
                 fase_corrente = e["Fase"]
                 st.markdown(f"#### {icone.get(fase_corrente,'')} {fase_corrente}")
+            n_dis = len(e.get("disegni", []))
             st.markdown(
                 f"<div class='block-seduta'><b>{e['Nome']}</b> "
                 f"<span style='color:#ffbf69'>· {e['Durata_min']} min · {e['Fondamentale']} · {e['Livello']}</span><br>"
@@ -608,13 +609,27 @@ if menu == "📋 Programma Allenamenti":
                 f"<span style='color:#7f93b0;font-size:0.9em'>🔁 Variante: {e['Varianti']}</span></div>",
                 unsafe_allow_html=True,
             )
+            with st.expander(f"🎨 Disegni di questo esercizio" + (f" ({n_dis})" if n_dis else "")):
+                components.html(TACTIC_BOARD_HTML, height=520)
+                st.caption("Disegna lo schema, premi **Scarica PNG**, poi caricalo qui sotto per allegarlo a QUESTO esercizio.")
+                upx = st.file_uploader("Allega disegno all'esercizio (PNG o JPG)", type=["png", "jpg", "jpeg"], key=f"upex_{ei}")
+                if upx is not None and st.button("➕ Allega all'esercizio", key=f"addex_{ei}"):
+                    b64 = base64.b64encode(upx.getvalue()).decode()
+                    e.setdefault("disegni", []).append({"nome": upx.name, "b64": b64})
+                    st.session_state._ultima_seduta = ult
+                    st.success("Disegno allegato all'esercizio!")
+                    st.rerun()
+                for dj, d in enumerate(e.get("disegni", [])):
+                    st.image(base64.b64decode(d["b64"]), caption=d.get("nome", ""), use_container_width=True)
+                    if st.button("🗑️ Rimuovi", key=f"delexdis_{ei}_{dj}"):
+                        e["disegni"].pop(dj)
+                        st.session_state._ultima_seduta = ult
+                        st.rerun()
 
         st.markdown("---")
-        st.markdown("#### 🎨 Disegni e schemi della seduta")
-        with st.expander("✏️ Apri la lavagna tattica (disegna e scarica)"):
-            components.html(TACTIC_BOARD_HTML, height=520)
-            st.caption("Disegna lo schema sul campo, premi **Scarica PNG**, poi caricalo qui sotto per allegarlo alla seduta.")
-        up = st.file_uploader("Allega un disegno/schema (PNG o JPG)", type=["png", "jpg", "jpeg"], key="up_disegno")
+        st.markdown("#### 🎨 Disegni generali della seduta (facoltativo)")
+        st.caption("Per uno schema non legato a un singolo esercizio. I disegni dei singoli esercizi si allegano nel blocco di ciascun esercizio qui sopra.")
+        up = st.file_uploader("Allega un disegno/schema generale (PNG o JPG)", type=["png", "jpg", "jpeg"], key="up_disegno")
         if up is not None and st.button("➕ Allega disegno alla seduta"):
             b64 = base64.b64encode(up.getvalue()).decode()
             ult.setdefault("disegni", []).append({"nome": up.name, "b64": b64})
@@ -790,6 +805,10 @@ if menu == "🗓️ Calendario":
                         fase_corrente = e["Fase"]
                         st.markdown(f"**{fase_corrente}**")
                     st.markdown(f"- {e['Nome']} ({e['Durata_min']} min) — _{e['Descrizione']}_")
+                    for d in e.get("disegni", []):
+                        st.image(base64.b64decode(d["b64"]), caption=f"{e['Nome']} — {d.get('nome','')}", use_container_width=True)
+                if s.get("disegni"):
+                    st.markdown("**Disegni generali**")
                 for d in s.get("disegni", []):
                     st.image(base64.b64decode(d["b64"]), caption=d.get("nome", ""), use_container_width=True)
                 if st.button("🗑️ Elimina seduta", key=f"delsed_{i}"):
