@@ -59,7 +59,8 @@ st.markdown("""
             linear-gradient(180deg, var(--vc-bg1) 0%, var(--vc-bg2) 100%);
         color: var(--vc-text);
     }
-    .block-container { padding-top: 1.4rem; }
+    .block-container { padding-top: 3.2rem; }
+    header[data-testid="stHeader"] { background: transparent; }
     section[data-testid="stSidebar"] {
         background: linear-gradient(180deg,#0b1526 0%, #0a1120 100%) !important;
         border-right: 1px solid var(--vc-border);
@@ -81,6 +82,7 @@ st.markdown("""
     .stButton>button:active { transform: translateY(0); }
 
     /* Menu a pillole (st.radio orizzontale) */
+    div[role="radiogroup"] { flex-wrap: wrap; row-gap:.45rem; }
     div[role="radiogroup"][aria-label=""] { gap:.4rem; }
     div[data-testid="stHorizontalBlock"] { align-items: stretch; }
     div[role="radiogroup"] label {
@@ -205,6 +207,7 @@ def save_state():
         "rosa": st.session_state.rosa,
         "esercizi": st.session_state.esercizi.to_dict("records"),
         "sedute": st.session_state.sedute,
+        "statistiche": st.session_state.get("statistiche", []),
     }
     tmp = tempfile.NamedTemporaryFile(delete=False, dir=".")
     try:
@@ -227,6 +230,7 @@ def load_state():
         es = data.get("esercizi", [])
         st.session_state.esercizi = pd.DataFrame(es) if es else pd.DataFrame(ESERCIZI_DEFAULT)
         st.session_state.sedute = data.get("sedute", [])
+        st.session_state.statistiche = data.get("statistiche", [])
         return True
     except Exception:
         return False
@@ -236,6 +240,7 @@ if "initialized" not in st.session_state:
     st.session_state.rosa = []
     st.session_state.esercizi = pd.DataFrame(ESERCIZI_DEFAULT)
     st.session_state.sedute = []
+    st.session_state.statistiche = []
     load_state()
     st.session_state.initialized = True
 
@@ -407,7 +412,7 @@ with st.sidebar:
 # ============================================================
 menu = st.radio(
     "",
-    ["🏠 Dashboard", "👥 Rosa", "📋 Programma Allenamenti", "📚 Libreria Esercizi", "🌐 Esercizi Online", "🗓️ Calendario"],
+    ["🏠 Dashboard", "👥 Rosa", "📋 Programma Allenamenti", "📚 Libreria Esercizi", "🌐 Esercizi Online", "📊 Statistiche Partita", "🗓️ Calendario"],
     horizontal=True,
     label_visibility="collapsed",
 )
@@ -710,6 +715,121 @@ if menu == "🌐 Esercizi Online":
                         st.rerun()
                     else:
                         st.warning("Serve almeno il nome dell'esercizio.")
+
+# ============================================================
+# STATISTICHE PARTITA
+# ============================================================
+if menu == "📊 Statistiche Partita":
+    st.header("📊 Statistiche Partita")
+    st.info(
+        "Carica il video della partita e **rileva le statistiche mentre guardi**: "
+        "scegli la giocatrice, tocca l'azione (punto, ace, muro, errore...) e l'app tiene il conteggio "
+        "e crea automaticamente tabelle e grafici. "
+        "\n\nℹ️ La lettura *automatica* delle statistiche direttamente dal video non è possibile in locale "
+        "senza servizi esterni a pagamento: qui il video ti fa da riferimento e i dati restano tuoi, salvati sul tuo PC."
+    )
+
+    # --- Etichetta partita ---
+    partita = st.text_input("Etichetta partita", value=st.session_state.get("_partita_corrente", ""),
+                            placeholder="es. VolleyCoach vs Team X · 24/09")
+    st.session_state._partita_corrente = partita
+
+    # --- Video ---
+    video = st.file_uploader("Carica il video della partita", type=["mp4", "mov", "avi", "mkv", "webm"])
+    if video is not None:
+        st.video(video)
+        st.caption("Il video resta solo in memoria durante la visione: non viene salvato né caricato online.")
+
+    st.markdown("---")
+    st.subheader("➕ Rileva un'azione")
+
+    if not st.session_state.rosa:
+        st.warning("Aggiungi prima le giocatrici nella sezione **Rosa** per poter registrare le statistiche.")
+    elif not partita.strip():
+        st.warning("Inserisci l'etichetta della partita qui sopra per iniziare a registrare.")
+    else:
+        TIPI_AZIONE = [
+            "Punto attacco", "Ace (punto in battuta)", "Muro punto",
+            "Errore attacco", "Errore battuta", "Errore ricezione",
+            "Ricezione positiva", "Difesa",
+        ]
+        nomi = [f"#{g['Numero']} {g['Nome']}" for g in st.session_state.rosa]
+        csel1, csel2, cbtn = st.columns([4, 4, 2])
+        with csel1:
+            gioc_sel = st.selectbox("Giocatrice", nomi)
+        with csel2:
+            azione_sel = st.selectbox("Azione", TIPI_AZIONE)
+        with cbtn:
+            st.write("")
+            st.write("")
+            if st.button("✅ Registra", use_container_width=True, type="primary"):
+                st.session_state.statistiche.append({
+                    "Partita": partita.strip(),
+                    "Giocatrice": gioc_sel,
+                    "Azione": azione_sel,
+                })
+                save_state()
+                st.toast(f"Registrato: {azione_sel} → {gioc_sel}")
+                st.rerun()
+
+    # --- Riepilogo ---
+    eventi = [e for e in st.session_state.get("statistiche", [])
+              if not partita.strip() or e.get("Partita") == partita.strip()]
+
+    st.markdown("---")
+    st.subheader("📈 Riepilogo")
+
+    if not eventi:
+        st.caption("Nessuna azione registrata per questa partita.")
+    else:
+        dfe = pd.DataFrame(eventi)
+
+        # Metriche rapide di squadra
+        punti_tot = int(dfe["Azione"].isin(["Punto attacco", "Ace (punto in battuta)", "Muro punto"]).sum())
+        errori_tot = int(dfe["Azione"].isin(["Errore attacco", "Errore battuta", "Errore ricezione"]).sum())
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Azioni registrate", len(dfe))
+        m2.metric("Punti fatti", punti_tot)
+        m3.metric("Errori", errori_tot)
+
+        # Tabella pivot giocatrice x azione
+        pivot = pd.pivot_table(dfe, index="Giocatrice", columns="Azione",
+                               aggfunc="size", fill_value=0)
+        pivot["TOTALE"] = pivot.sum(axis=1)
+        pivot = pivot.sort_values("TOTALE", ascending=False)
+        st.markdown("##### Dettaglio per giocatrice")
+        st.dataframe(pivot, use_container_width=True)
+
+        # Grafico punti per giocatrice
+        col_punti = [c for c in ["Punto attacco", "Ace (punto in battuta)", "Muro punto"] if c in pivot.columns]
+        if col_punti:
+            punti_gioc = pivot[col_punti].sum(axis=1).sort_values(ascending=False)
+            punti_gioc = punti_gioc[punti_gioc > 0]
+            if len(punti_gioc):
+                st.markdown("##### Punti per giocatrice")
+                st.bar_chart(punti_gioc)
+
+        # Esporta CSV
+        csv = dfe.to_csv(index=False).encode("utf-8")
+        st.download_button("⬇️ Scarica statistiche (CSV)", data=csv,
+                           file_name="statistiche_partita.csv", mime="text/csv")
+
+        ce1, ce2 = st.columns(2)
+        if ce1.button("↩️ Annulla ultima azione"):
+            # rimuove l'ultimo evento di questa partita
+            for i in range(len(st.session_state.statistiche) - 1, -1, -1):
+                if not partita.strip() or st.session_state.statistiche[i].get("Partita") == partita.strip():
+                    st.session_state.statistiche.pop(i)
+                    break
+            save_state()
+            st.rerun()
+        if ce2.button("🗑️ Cancella statistiche di questa partita"):
+            st.session_state.statistiche = [
+                e for e in st.session_state.statistiche
+                if partita.strip() and e.get("Partita") != partita.strip()
+            ]
+            save_state()
+            st.rerun()
 
 # ============================================================
 # CALENDARIO
