@@ -116,6 +116,35 @@ st.markdown("""
     }
     .ex-card:hover { border-color: var(--vc-accent); box-shadow: 0 6px 18px rgba(0,0,0,0.3); }
 
+    /* Card giocatrice luminosa con flip */
+    .flip-card { background:transparent; perspective:1200px; height:200px; margin-bottom:6px; }
+    .flip-inner {
+        position:relative; width:100%; height:100%;
+        transition: transform .65s cubic-bezier(.4,.2,.2,1);
+        transform-style: preserve-3d;
+    }
+    .flip-card:hover .flip-inner { transform: rotateY(180deg); }
+    .flip-front, .flip-back {
+        position:absolute; width:100%; height:100%;
+        -webkit-backface-visibility:hidden; backface-visibility:hidden;
+        border-radius:18px; padding:16px 18px; box-sizing:border-box; overflow:hidden;
+        display:flex; flex-direction:column;
+    }
+    .flip-front {
+        background: linear-gradient(150deg, #16234180 0%, #101b33f0 100%);
+    }
+    .flip-back {
+        transform: rotateY(180deg);
+        background: linear-gradient(150deg, #101b33f0 0%, #16223dcc 100%);
+    }
+    .flip-name { font-size:1.15rem; font-weight:800; color:#ffffff; line-height:1.2; }
+    .flip-role { font-weight:700; font-size:.95rem; margin-top:2px; }
+    .flip-meta { color:#9fb3d1; font-size:.82rem; margin-top:4px; }
+    .flip-hint { color:#6f83a0; font-size:.72rem; margin-top:auto; }
+    .flip-back-title { font-weight:800; font-size:.95rem; margin-bottom:6px; }
+    .flip-back-body { color:#dfe8f7; font-size:.82rem; line-height:1.35; overflow-y:auto; }
+    .flip-empty { color:#7f93b0; font-size:.82rem; font-style:italic; }
+
     /* Badge livello / intensita */
     .vc-badge {
         display:inline-block; padding:.15rem .6rem; border-radius:999px;
@@ -207,7 +236,6 @@ def save_state():
         "rosa": st.session_state.rosa,
         "esercizi": st.session_state.esercizi.to_dict("records"),
         "sedute": st.session_state.sedute,
-        "statistiche": st.session_state.get("statistiche", []),
     }
     tmp = tempfile.NamedTemporaryFile(delete=False, dir=".")
     try:
@@ -230,7 +258,6 @@ def load_state():
         es = data.get("esercizi", [])
         st.session_state.esercizi = pd.DataFrame(es) if es else pd.DataFrame(ESERCIZI_DEFAULT)
         st.session_state.sedute = data.get("sedute", [])
-        st.session_state.statistiche = data.get("statistiche", [])
         return True
     except Exception:
         return False
@@ -240,7 +267,6 @@ if "initialized" not in st.session_state:
     st.session_state.rosa = []
     st.session_state.esercizi = pd.DataFrame(ESERCIZI_DEFAULT)
     st.session_state.sedute = []
-    st.session_state.statistiche = []
     load_state()
     st.session_state.initialized = True
 
@@ -256,6 +282,13 @@ def badge_livello(liv):
     """Restituisce un badge HTML colorato per il livello dell'esercizio."""
     cls = {"Base": "badge-base", "Medio": "badge-medio", "Avanzato": "badge-avanzato"}.get(liv, "badge-medio")
     return f"<span class='vc-badge {cls}'>{_html.escape(str(liv))}</span>"
+
+
+COLORI_RUOLO = {"P": "#ffb703", "S": "#4cc9f0", "C": "#b5179e", "O": "#f72585", "L": "#52b788"}
+
+
+def colore_ruolo(r):
+    return COLORI_RUOLO.get(r, "#ff9f1c")
 
 
 def conta_ruoli(lista):
@@ -412,7 +445,7 @@ with st.sidebar:
 # ============================================================
 menu = st.radio(
     "",
-    ["🏠 Dashboard", "👥 Rosa", "📋 Programma Allenamenti", "📚 Libreria Esercizi", "🌐 Esercizi Online", "📊 Statistiche Partita", "🗓️ Calendario"],
+    ["🏠 Dashboard", "👥 Rosa", "📋 Programma Allenamenti", "📚 Libreria Esercizi", "🌐 Esercizi Online", "🗓️ Calendario"],
     horizontal=True,
     label_visibility="collapsed",
 )
@@ -489,28 +522,88 @@ if menu == "👥 Rosa":
 
     if st.session_state.rosa:
         st.markdown("### Elenco")
+        st.caption("Passa il mouse su una card per girarla e vedere gli obiettivi. Usa “Compila / modifica scheda” per aggiornarli.")
         filtro = st.multiselect("Filtra per ruolo", list(RUOLI.keys()),
                                 format_func=lambda r: RUOLI[r])
-        for i, g in enumerate(st.session_state.rosa):
-            if filtro and g["Ruolo"] not in filtro:
-                continue
-            emoji = {"Disponibile": "🟢", "Infortunata": "🔴", "In recupero": "🟡", "Indisponibile": "⚪"}.get(g.get("Stato"), "⚪")
-            c1, c2, c3, c4 = st.columns([4, 2, 2, 1])
-            c1.markdown(f"**#{g['Numero']} {g['Nome']}**  \n<span style='color:#9fb3d1'>{RUOLI[g['Ruolo']]} · {g['Altezza']} cm</span>", unsafe_allow_html=True)
-            c2.markdown(f"{emoji} {g.get('Stato','')}")
-            c3.caption(g.get("Note", "") or "—")
-            with c4:
-                nuovo_stato = st.selectbox("stato", ["Disponibile", "Infortunata", "In recupero", "Indisponibile"],
-                                           index=["Disponibile", "Infortunata", "In recupero", "Indisponibile"].index(g.get("Stato", "Disponibile")),
-                                           key=f"st_{i}", label_visibility="collapsed")
-                if nuovo_stato != g.get("Stato"):
-                    st.session_state.rosa[i]["Stato"] = nuovo_stato
-                    save_state()
-                    st.rerun()
-                if st.button("🗑️", key=f"del_{i}"):
-                    st.session_state.rosa.pop(i)
-                    save_state()
-                    st.rerun()
+
+        visibili = [(i, g) for i, g in enumerate(st.session_state.rosa)
+                    if not (filtro and g["Ruolo"] not in filtro)]
+        N_COL = 3
+        for riga_start in range(0, len(visibili), N_COL):
+            cols = st.columns(N_COL)
+            for col, (i, g) in zip(cols, visibili[riga_start:riga_start + N_COL]):
+                with col:
+                    emoji = {"Disponibile": "🟢", "Infortunata": "🔴", "In recupero": "🟡", "Indisponibile": "⚪"}.get(g.get("Stato"), "⚪")
+                    col_r = colore_ruolo(g["Ruolo"])
+                    nome = _html.escape(str(g["Nome"]))
+                    ruolo_nome = _html.escape(RUOLI[g["Ruolo"]])
+
+                    # Retro: obiettivi
+                    ob_princ = str(g.get("Obiettivo_principale", "")).strip()
+                    obiettivi = str(g.get("Obiettivi", "")).strip()
+                    parti = []
+                    if ob_princ:
+                        parti.append(f"<b>🎯 {_html.escape(ob_princ)}</b>")
+                    if obiettivi:
+                        parti.append(_html.escape(obiettivi).replace("\n", "<br>"))
+                    if parti:
+                        back_body = f"<div class='flip-back-body'>{'<br>'.join(parti)}</div>"
+                    else:
+                        back_body = "<div class='flip-empty'>Nessun obiettivo inserito.<br>Aprilo qui sotto e compilalo.</div>"
+
+                    st.markdown(
+                        f"<div class='flip-card'><div class='flip-inner'>"
+                        f"<div class='flip-front' style=\"border:1px solid {col_r}; box-shadow:0 0 18px {col_r}55, inset 0 0 24px {col_r}18;\">"
+                        f"<div style='font-size:1.5rem'>{emoji}</div>"
+                        f"<div class='flip-name'>#{_html.escape(str(g['Numero']))} {nome}</div>"
+                        f"<div class='flip-role' style='color:{col_r}'>{ruolo_nome}</div>"
+                        f"<div class='flip-meta'>{_html.escape(str(g['Altezza']))} cm · {emoji} {_html.escape(str(g.get('Stato','')))}</div>"
+                        f"<div class='flip-hint'>↻ passa il mouse per la scheda</div>"
+                        f"</div>"
+                        f"<div class='flip-back' style=\"border:1px solid {col_r}; box-shadow:0 0 18px {col_r}55, inset 0 0 24px {col_r}18;\">"
+                        f"<div class='flip-back-title' style='color:{col_r}'>📋 Obiettivi — {nome}</div>"
+                        f"{back_body}"
+                        f"</div></div></div>",
+                        unsafe_allow_html=True,
+                    )
+
+                    with st.expander("✏️ Compila / modifica scheda"):
+                        with st.form(f"scheda_{i}"):
+                            ob_princ_in = st.text_input(
+                                "🎯 Obiettivo tecnico principale",
+                                value=g.get("Obiettivo_principale", ""),
+                                placeholder="es. Migliorare la ricezione in zona 5",
+                            )
+                            obiettivi_in = st.text_area(
+                                "📌 Obiettivi individuali",
+                                value=g.get("Obiettivi", ""),
+                                placeholder="Uno per riga",
+                                height=100,
+                            )
+                            forza = st.text_area("💪 Punti di forza", value=g.get("Punti_forza", ""), height=70)
+                            migliorare = st.text_area("🔧 Aree da migliorare", value=g.get("Da_migliorare", ""), height=70)
+                            lavoro = st.text_area("🏋️ Lavoro individuale assegnato", value=g.get("Lavoro_individuale", ""), height=70)
+                            nuovo_stato = st.selectbox(
+                                "Stato", ["Disponibile", "Infortunata", "In recupero", "Indisponibile"],
+                                index=["Disponibile", "Infortunata", "In recupero", "Indisponibile"].index(g.get("Stato", "Disponibile")),
+                            )
+                            fc1, fc2 = st.columns(2)
+                            salva = fc1.form_submit_button("💾 Salva", use_container_width=True, type="primary")
+                            elimina = fc2.form_submit_button("🗑️ Elimina", use_container_width=True)
+                            if salva:
+                                st.session_state.rosa[i]["Obiettivo_principale"] = ob_princ_in.strip()
+                                st.session_state.rosa[i]["Obiettivi"] = obiettivi_in.strip()
+                                st.session_state.rosa[i]["Punti_forza"] = forza.strip()
+                                st.session_state.rosa[i]["Da_migliorare"] = migliorare.strip()
+                                st.session_state.rosa[i]["Lavoro_individuale"] = lavoro.strip()
+                                st.session_state.rosa[i]["Stato"] = nuovo_stato
+                                save_state()
+                                st.success("Scheda aggiornata!")
+                                st.rerun()
+                            if elimina:
+                                st.session_state.rosa.pop(i)
+                                save_state()
+                                st.rerun()
     else:
         st.info("Nessuna giocatrice inserita.")
 
@@ -715,121 +808,6 @@ if menu == "🌐 Esercizi Online":
                         st.rerun()
                     else:
                         st.warning("Serve almeno il nome dell'esercizio.")
-
-# ============================================================
-# STATISTICHE PARTITA
-# ============================================================
-if menu == "📊 Statistiche Partita":
-    st.header("📊 Statistiche Partita")
-    st.info(
-        "Carica il video della partita e **rileva le statistiche mentre guardi**: "
-        "scegli la giocatrice, tocca l'azione (punto, ace, muro, errore...) e l'app tiene il conteggio "
-        "e crea automaticamente tabelle e grafici. "
-        "\n\nℹ️ La lettura *automatica* delle statistiche direttamente dal video non è possibile in locale "
-        "senza servizi esterni a pagamento: qui il video ti fa da riferimento e i dati restano tuoi, salvati sul tuo PC."
-    )
-
-    # --- Etichetta partita ---
-    partita = st.text_input("Etichetta partita", value=st.session_state.get("_partita_corrente", ""),
-                            placeholder="es. VolleyCoach vs Team X · 24/09")
-    st.session_state._partita_corrente = partita
-
-    # --- Video ---
-    video = st.file_uploader("Carica il video della partita", type=["mp4", "mov", "avi", "mkv", "webm"])
-    if video is not None:
-        st.video(video)
-        st.caption("Il video resta solo in memoria durante la visione: non viene salvato né caricato online.")
-
-    st.markdown("---")
-    st.subheader("➕ Rileva un'azione")
-
-    if not st.session_state.rosa:
-        st.warning("Aggiungi prima le giocatrici nella sezione **Rosa** per poter registrare le statistiche.")
-    elif not partita.strip():
-        st.warning("Inserisci l'etichetta della partita qui sopra per iniziare a registrare.")
-    else:
-        TIPI_AZIONE = [
-            "Punto attacco", "Ace (punto in battuta)", "Muro punto",
-            "Errore attacco", "Errore battuta", "Errore ricezione",
-            "Ricezione positiva", "Difesa",
-        ]
-        nomi = [f"#{g['Numero']} {g['Nome']}" for g in st.session_state.rosa]
-        csel1, csel2, cbtn = st.columns([4, 4, 2])
-        with csel1:
-            gioc_sel = st.selectbox("Giocatrice", nomi)
-        with csel2:
-            azione_sel = st.selectbox("Azione", TIPI_AZIONE)
-        with cbtn:
-            st.write("")
-            st.write("")
-            if st.button("✅ Registra", use_container_width=True, type="primary"):
-                st.session_state.statistiche.append({
-                    "Partita": partita.strip(),
-                    "Giocatrice": gioc_sel,
-                    "Azione": azione_sel,
-                })
-                save_state()
-                st.toast(f"Registrato: {azione_sel} → {gioc_sel}")
-                st.rerun()
-
-    # --- Riepilogo ---
-    eventi = [e for e in st.session_state.get("statistiche", [])
-              if not partita.strip() or e.get("Partita") == partita.strip()]
-
-    st.markdown("---")
-    st.subheader("📈 Riepilogo")
-
-    if not eventi:
-        st.caption("Nessuna azione registrata per questa partita.")
-    else:
-        dfe = pd.DataFrame(eventi)
-
-        # Metriche rapide di squadra
-        punti_tot = int(dfe["Azione"].isin(["Punto attacco", "Ace (punto in battuta)", "Muro punto"]).sum())
-        errori_tot = int(dfe["Azione"].isin(["Errore attacco", "Errore battuta", "Errore ricezione"]).sum())
-        m1, m2, m3 = st.columns(3)
-        m1.metric("Azioni registrate", len(dfe))
-        m2.metric("Punti fatti", punti_tot)
-        m3.metric("Errori", errori_tot)
-
-        # Tabella pivot giocatrice x azione
-        pivot = pd.pivot_table(dfe, index="Giocatrice", columns="Azione",
-                               aggfunc="size", fill_value=0)
-        pivot["TOTALE"] = pivot.sum(axis=1)
-        pivot = pivot.sort_values("TOTALE", ascending=False)
-        st.markdown("##### Dettaglio per giocatrice")
-        st.dataframe(pivot, use_container_width=True)
-
-        # Grafico punti per giocatrice
-        col_punti = [c for c in ["Punto attacco", "Ace (punto in battuta)", "Muro punto"] if c in pivot.columns]
-        if col_punti:
-            punti_gioc = pivot[col_punti].sum(axis=1).sort_values(ascending=False)
-            punti_gioc = punti_gioc[punti_gioc > 0]
-            if len(punti_gioc):
-                st.markdown("##### Punti per giocatrice")
-                st.bar_chart(punti_gioc)
-
-        # Esporta CSV
-        csv = dfe.to_csv(index=False).encode("utf-8")
-        st.download_button("⬇️ Scarica statistiche (CSV)", data=csv,
-                           file_name="statistiche_partita.csv", mime="text/csv")
-
-        ce1, ce2 = st.columns(2)
-        if ce1.button("↩️ Annulla ultima azione"):
-            # rimuove l'ultimo evento di questa partita
-            for i in range(len(st.session_state.statistiche) - 1, -1, -1):
-                if not partita.strip() or st.session_state.statistiche[i].get("Partita") == partita.strip():
-                    st.session_state.statistiche.pop(i)
-                    break
-            save_state()
-            st.rerun()
-        if ce2.button("🗑️ Cancella statistiche di questa partita"):
-            st.session_state.statistiche = [
-                e for e in st.session_state.statistiche
-                if partita.strip() and e.get("Partita") != partita.strip()
-            ]
-            save_state()
-            st.rerun()
 
 # ============================================================
 # CALENDARIO
