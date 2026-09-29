@@ -569,8 +569,26 @@ if menu == "👥 Rosa":
 
                     with st.expander("✏️ Compila / modifica scheda"):
                         with st.form(f"scheda_{i}"):
+                            st.markdown("**👤 Dati giocatrice**")
+                            dc1, dc2 = st.columns(2)
+                            with dc1:
+                                nome_in = st.text_input("Nome e cognome", value=g.get("Nome", ""))
+                                numero_in = st.number_input("Numero maglia", min_value=0, max_value=99, step=1,
+                                                            value=int(g.get("Numero", 0)))
+                            with dc2:
+                                ruolo_in = st.selectbox("Ruolo", list(RUOLI.keys()),
+                                                        index=list(RUOLI.keys()).index(g.get("Ruolo", "P")) if g.get("Ruolo") in RUOLI else 0,
+                                                        format_func=lambda r: RUOLI[r])
+                                altezza_in = st.number_input("Altezza (cm)", min_value=140, max_value=210, step=1,
+                                                             value=int(g.get("Altezza", 170)))
+                            note_in = st.text_input("Note", value=g.get("Note", ""))
+                            nuovo_stato = st.selectbox(
+                                "Stato", ["Disponibile", "Infortunata", "In recupero", "Indisponibile"],
+                                index=["Disponibile", "Infortunata", "In recupero", "Indisponibile"].index(g.get("Stato", "Disponibile")),
+                            )
+                            st.markdown("**🎯 Obiettivi tecnici**")
                             ob_princ_in = st.text_input(
-                                "🎯 Obiettivo tecnico principale",
+                                "Obiettivo tecnico principale",
                                 value=g.get("Obiettivo_principale", ""),
                                 placeholder="es. Migliorare la ricezione in zona 5",
                             )
@@ -583,23 +601,27 @@ if menu == "👥 Rosa":
                             forza = st.text_area("💪 Punti di forza", value=g.get("Punti_forza", ""), height=70)
                             migliorare = st.text_area("🔧 Aree da migliorare", value=g.get("Da_migliorare", ""), height=70)
                             lavoro = st.text_area("🏋️ Lavoro individuale assegnato", value=g.get("Lavoro_individuale", ""), height=70)
-                            nuovo_stato = st.selectbox(
-                                "Stato", ["Disponibile", "Infortunata", "In recupero", "Indisponibile"],
-                                index=["Disponibile", "Infortunata", "In recupero", "Indisponibile"].index(g.get("Stato", "Disponibile")),
-                            )
                             fc1, fc2 = st.columns(2)
                             salva = fc1.form_submit_button("💾 Salva", use_container_width=True, type="primary")
                             elimina = fc2.form_submit_button("🗑️ Elimina", use_container_width=True)
                             if salva:
-                                st.session_state.rosa[i]["Obiettivo_principale"] = ob_princ_in.strip()
-                                st.session_state.rosa[i]["Obiettivi"] = obiettivi_in.strip()
-                                st.session_state.rosa[i]["Punti_forza"] = forza.strip()
-                                st.session_state.rosa[i]["Da_migliorare"] = migliorare.strip()
-                                st.session_state.rosa[i]["Lavoro_individuale"] = lavoro.strip()
-                                st.session_state.rosa[i]["Stato"] = nuovo_stato
-                                save_state()
-                                st.success("Scheda aggiornata!")
-                                st.rerun()
+                                if not nome_in.strip():
+                                    st.warning("Il nome non può essere vuoto.")
+                                else:
+                                    st.session_state.rosa[i]["Nome"] = nome_in.strip()
+                                    st.session_state.rosa[i]["Numero"] = int(numero_in)
+                                    st.session_state.rosa[i]["Ruolo"] = ruolo_in
+                                    st.session_state.rosa[i]["Altezza"] = int(altezza_in)
+                                    st.session_state.rosa[i]["Note"] = note_in.strip()
+                                    st.session_state.rosa[i]["Stato"] = nuovo_stato
+                                    st.session_state.rosa[i]["Obiettivo_principale"] = ob_princ_in.strip()
+                                    st.session_state.rosa[i]["Obiettivi"] = obiettivi_in.strip()
+                                    st.session_state.rosa[i]["Punti_forza"] = forza.strip()
+                                    st.session_state.rosa[i]["Da_migliorare"] = migliorare.strip()
+                                    st.session_state.rosa[i]["Lavoro_individuale"] = lavoro.strip()
+                                    save_state()
+                                    st.success("Giocatrice aggiornata!")
+                                    st.rerun()
                             if elimina:
                                 st.session_state.rosa.pop(i)
                                 save_state()
