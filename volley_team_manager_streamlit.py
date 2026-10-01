@@ -264,7 +264,9 @@ def _state_dict():
         "rosa": st.session_state.rosa,
         "esercizi": st.session_state.esercizi.to_dict("records"),
         "sedute": st.session_state.sedute,
-        "versione": 2,
+        "macrocicli": st.session_state.get("macrocicli", []),
+        "microcicli": st.session_state.get("microcicli", []),
+        "versione": 3,
     }
 
 
@@ -299,6 +301,8 @@ def _apply_data(data):
     df["Disegno"] = df["Disegno"].fillna("")
     st.session_state.esercizi = df
     st.session_state.sedute = data.get("sedute", [])
+    st.session_state.macrocicli = data.get("macrocicli", [])
+    st.session_state.microcicli = data.get("microcicli", [])
 
 
 def load_state():
@@ -334,10 +338,17 @@ if "initialized" not in st.session_state:
     st.session_state.rosa = []
     st.session_state.esercizi = pd.DataFrame(ESERCIZI_DEFAULT)
     st.session_state.sedute = []
+    st.session_state.macrocicli = []
+    st.session_state.microcicli = []
     load_state()
     # assicura comunque la colonna Disegno
     if "Disegno" not in st.session_state.esercizi.columns:
         st.session_state.esercizi["Disegno"] = ""
+    # assicura le liste dei cicli (compatibilit\u00e0 con backup vecchi)
+    if "macrocicli" not in st.session_state:
+        st.session_state.macrocicli = []
+    if "microcicli" not in st.session_state:
+        st.session_state.microcicli = []
     st.session_state.initialized = True
 
 
@@ -642,8 +653,8 @@ with st.sidebar:
 # ============================================================
 menu = st.radio(
     "",
-    ["\U0001F3E0 Dashboard", "\U0001F465 Rosa", "\U0001F4CB Programma Allenamenti",
-     "\U0001F4DA Libreria Esercizi", "\U0001F310 Esercizi Online", "\U0001F5D3\uFE0F Calendario"],
+    ["\U0001F3E0 Dashboard", "\U0001F465 Rosa", "\U0001F9E9 Periodizzazione", "\U0001F4CB Programma Allenamenti",
+     "\U0001F4DA Libreria Esercizi", "\U0001F310 Esercizi Online", "\U0001F5D3\uFE0F Calendario", "\U0001F4CA Presenze"],
     horizontal=True,
     label_visibility="collapsed",
 )
@@ -875,13 +886,31 @@ if menu == "\U0001F4CB Programma Allenamenti":
         st.info("Aggiungi le giocatrici nella sezione **Rosa** per gestire le presenze. Puoi comunque generare una seduta indicando il numero di presenti qui sotto.")
 
     st.markdown("---")
+
+    # ---- Collega la seduta a un microciclo (periodizzazione) ----
+    micro_sel = None
+    micro_list = st.session_state.get("microcicli", [])
+    if micro_list:
+        opzioni = ["(nessun microciclo)"] + [
+            f"{m.get('macrociclo','')} \u00b7 {m.get('nome','')} ({m.get('obiettivo','')})" for m in micro_list
+        ]
+        scelta = st.selectbox("\U0001F9E9 Collega a un microciclo", opzioni,
+                              help="Scegli la settimana di allenamento: obiettivo e intensit\u00e0 vengono precompilati.")
+        if scelta != "(nessun microciclo)":
+            micro_sel = micro_list[opzioni.index(scelta) - 1]
+
+    obj_default = micro_sel.get("obiettivo") if micro_sel and micro_sel.get("obiettivo") in OBIETTIVI else None
+    int_default = micro_sel.get("intensita") if micro_sel and micro_sel.get("intensita") in INTENSITA else None
+
     c1, c2, c3, c4 = st.columns(4)
     with c1:
         data_seduta = st.date_input("Data", value=date.today())
     with c2:
-        obiettivo = st.selectbox("Obiettivo della seduta", OBIETTIVI)
+        obiettivo = st.selectbox("Obiettivo della seduta", OBIETTIVI,
+                                 index=OBIETTIVI.index(obj_default) if obj_default else 0)
     with c3:
-        intensita = st.selectbox("Intensit\u00e0", INTENSITA, index=1)
+        intensita = st.selectbox("Intensit\u00e0", INTENSITA,
+                                 index=INTENSITA.index(int_default) if int_default else 1)
     with c4:
         durata = st.slider("Durata (min)", 60, 150, 90, step=15)
 
@@ -905,6 +934,7 @@ if menu == "\U0001F4CB Programma Allenamenti":
             "presenti_nomi": [g["Nome"] for g in presenti],
             "assenti_nomi": [g["Nome"] for g in assenti],
             "composizione": conta_ruoli(presenti) if presenti else {},
+            "microciclo": (f"{micro_sel.get('macrociclo','')} \u00b7 {micro_sel.get('nome','')}" if micro_sel else ""),
             "esercizi": seduta,
         }
 
@@ -914,26 +944,80 @@ if menu == "\U0001F4CB Programma Allenamenti":
         st.subheader(f"\U0001F3AF Seduta \u2014 {ult['obiettivo']} ({ult['intensita']})")
         tot = sum(int(e["Durata_min"]) for e in ult["esercizi"])
         st.caption(f"\U0001F4C5 {ult['data']} \u00b7 durata stimata **{tot} min** \u00b7 {ult['presenti']} presenti")
+        if ult.get("microciclo"):
+            st.caption("\U0001F9E9 Microciclo: " + ult["microciclo"])
         if ult.get("presenti_nomi"):
             st.markdown(chip_ruoli([g for g in st.session_state.rosa if g["Nome"] in ult["presenti_nomi"]]), unsafe_allow_html=True)
             st.caption("\u2705 " + ", ".join(ult["presenti_nomi"]))
         if ult.get("assenti_nomi"):
             st.caption("\u274C Assenti: " + ", ".join(ult["assenti_nomi"]))
 
+        st.info("\U0001F4A1 Puoi correggere la seduta: modifica, sostituisci, sposta o elimina ogni singolo esercizio qui sotto.")
+        es_list = ult["esercizi"]
+        tutti_nomi = list(st.session_state.esercizi["Nome"])
         fase_corrente = None
         icone = {"Riscaldamento": "\U0001F525", "Centrale": "\U0001F3D0", "Situazionale": "\U0001F19A", "Defaticamento": "\U0001F9D8"}
-        for e in ult["esercizi"]:
+        for i, e in enumerate(es_list):
             if e["Fase"] != fase_corrente:
                 fase_corrente = e["Fase"]
                 st.markdown(f"#### {icone.get(fase_corrente,'')} {fase_corrente}")
             dis = disegno_html(e.get("Disegno", ""))
             st.markdown(
-                f"<div class='block-seduta'><b>{_html.escape(str(e['Nome']))}</b> "
+                f"<div class='block-seduta'><b>{i+1}. {_html.escape(str(e['Nome']))}</b> "
                 f"<span style='color:#ffbf69'>\u00b7 {e['Durata_min']} min \u00b7 {e['Fondamentale']}</span> {badge_livello(e['Livello'])}<br>"
                 f"<span style='color:#c9d6ea'>{_html.escape(str(e['Descrizione']))}</span><br>"
                 f"<span style='color:#7f93b0;font-size:0.9em'>\U0001F501 Variante: {_html.escape(str(e['Varianti']))}</span>{dis}</div>",
                 unsafe_allow_html=True,
             )
+            with st.expander(f"\u270F\uFE0F Correggi l'esercizio {i+1}"):
+                # Sostituzione dalla libreria
+                csub1, csub2 = st.columns([3, 1])
+                nome_attuale = str(e["Nome"])
+                idx_sel = tutti_nomi.index(nome_attuale) if nome_attuale in tutti_nomi else 0
+                sostituto = csub1.selectbox("Sostituisci con un esercizio della libreria",
+                                            tutti_nomi, index=idx_sel, key=f"sub_sel_{i}")
+                if csub2.button("\U0001F501 Sostituisci", key=f"sub_btn_{i}", use_container_width=True):
+                    nuovo = st.session_state.esercizi[st.session_state.esercizi["Nome"] == sostituto].iloc[0].to_dict()
+                    nuovo["Fase"] = e["Fase"]  # mantieni la fase nella seduta
+                    es_list[i] = nuovo
+                    st.rerun()
+                # Modifica puntuale dei campi
+                mc1, mc2, mc3 = st.columns(3)
+                en = mc1.text_input("Nome", value=str(e["Nome"]), key=f"ed_nome_{i}")
+                edur = mc2.number_input("Durata (min)", 1, 60, int(e["Durata_min"]), key=f"ed_dur_{i}")
+                eliv = mc3.selectbox("Livello", ["Base", "Medio", "Avanzato"],
+                                     index=["Base", "Medio", "Avanzato"].index(e["Livello"]) if e["Livello"] in ["Base", "Medio", "Avanzato"] else 0,
+                                     key=f"ed_liv_{i}")
+                edesc = st.text_area("Descrizione", value=str(e["Descrizione"]), key=f"ed_desc_{i}", height=80)
+                evar = st.text_input("Variante", value=str(e["Varianti"]), key=f"ed_var_{i}")
+                b1, b2, b3, b4 = st.columns(4)
+                if b1.button("\U0001F4BE Salva", key=f"ed_save_{i}", use_container_width=True):
+                    e["Nome"] = en.strip(); e["Durata_min"] = int(edur); e["Livello"] = eliv
+                    e["Descrizione"] = edesc.strip(); e["Varianti"] = evar.strip()
+                    st.rerun()
+                if b2.button("\u2B06\uFE0F Su", key=f"ed_up_{i}", use_container_width=True, disabled=(i == 0)):
+                    es_list[i - 1], es_list[i] = es_list[i], es_list[i - 1]
+                    st.rerun()
+                if b3.button("\u2B07\uFE0F Gi\u00f9", key=f"ed_down_{i}", use_container_width=True, disabled=(i == len(es_list) - 1)):
+                    es_list[i + 1], es_list[i] = es_list[i], es_list[i + 1]
+                    st.rerun()
+                if b4.button("\U0001F5D1\uFE0F Rimuovi", key=f"ed_del_{i}", use_container_width=True):
+                    es_list.pop(i)
+                    st.rerun()
+
+        # Aggiungi un esercizio alla seduta
+        with st.expander("\u2795 Aggiungi un esercizio alla seduta"):
+            aa1, aa2, aa3 = st.columns([2, 2, 1])
+            add_fase = aa1.selectbox("Fase", FASI, key="add_seduta_fase")
+            add_nome = aa2.selectbox("Esercizio", tutti_nomi, key="add_seduta_nome")
+            if aa3.button("\u2795 Aggiungi", key="add_seduta_btn", use_container_width=True):
+                nuovo = st.session_state.esercizi[st.session_state.esercizi["Nome"] == add_nome].iloc[0].to_dict()
+                nuovo["Fase"] = add_fase
+                es_list.append(nuovo)
+                # riordina per fase mantenendo l'ordine delle fasi
+                ordine = {f: k for k, f in enumerate(FASI)}
+                es_list.sort(key=lambda x: ordine.get(x["Fase"], 99))
+                st.rerun()
 
         if st.button("\U0001F4C5 Salva questa seduta nel calendario", type="primary"):
             st.session_state.sedute.append(ult)
@@ -1161,3 +1245,173 @@ if menu == "\U0001F5D3\uFE0F Calendario":
         dfc["Carico"] = dfc["Intensit\u00e0"].map(pesi)
         st.bar_chart(dfc.set_index("Data")["Carico"])
         st.caption("Consiglio: evita due sedute a carico alto consecutive e programma uno scarico prima della gara.")
+
+# ============================================================
+# PERIODIZZAZIONE (macrocicli e microcicli)
+# ============================================================
+if menu == "\U0001F9E9 Periodizzazione":
+    st.header("\U0001F9E9 Periodizzazione \u2014 Macrocicli & Microcicli")
+    st.caption("Programma la stagione a lungo termine: i **macrocicli** sono i grandi blocchi (es. preparazione, competizione), "
+               "i **microcicli** sono le singole settimane. Nel Programma Allenamenti puoi collegare ogni seduta al suo microciclo.")
+
+    FASI_MACRO = ["Preparazione generale", "Preparazione specifica", "Pre-campionato",
+                  "Competizione", "Transizione / scarico"]
+
+    tab_macro, tab_micro = st.tabs(["\U0001F5FA\uFE0F Macrocicli", "\U0001F4C6 Microcicli"])
+
+    # ---------- MACROCICLI ----------
+    with tab_macro:
+        with st.expander("\u2795 Nuovo macrociclo", expanded=not st.session_state.macrocicli):
+            mc1, mc2 = st.columns(2)
+            with mc1:
+                ma_nome = st.text_input("Nome", placeholder="es. Blocco Autunno", key="ma_nome")
+                ma_fase = st.selectbox("Fase stagionale", FASI_MACRO, key="ma_fase")
+                ma_inizio = st.date_input("Data inizio", value=date.today(), key="ma_inizio")
+            with mc2:
+                ma_fine = st.date_input("Data fine", value=date.today() + timedelta(days=28), key="ma_fine")
+                ma_obj = st.text_input("Obiettivo generale", placeholder="es. Costruzione fisica e tecnica", key="ma_obj")
+            ma_note = st.text_area("Note", key="ma_note", height=70)
+            if st.button("\u2795 Crea macrociclo", use_container_width=True, key="ma_btn"):
+                if ma_nome.strip():
+                    st.session_state.macrocicli.append({
+                        "nome": ma_nome.strip(), "fase": ma_fase,
+                        "inizio": ma_inizio.isoformat(), "fine": ma_fine.isoformat(),
+                        "obiettivo": ma_obj.strip(), "note": ma_note.strip(),
+                    })
+                    save_state()
+                    st.success("Macrociclo creato!")
+                    st.rerun()
+                else:
+                    st.warning("Inserisci almeno il nome.")
+
+        if st.session_state.macrocicli:
+            for i, m in enumerate(sorted(st.session_state.macrocicli, key=lambda x: x.get("inizio", ""))):
+                ni = st.session_state.macrocicli.index(m)
+                with st.expander(f"\U0001F5FA\uFE0F {m['nome']} \u00b7 {m['fase']} \u00b7 {m.get('inizio','')} \u2192 {m.get('fine','')}"):
+                    st.markdown(f"**Obiettivo:** {_html.escape(m.get('obiettivo','') or '\u2014')}")
+                    if m.get("note"):
+                        st.caption(m["note"])
+                    # microcicli collegati
+                    collegati = [mi for mi in st.session_state.microcicli if mi.get("macrociclo") == m["nome"]]
+                    st.caption(f"\U0001F4C6 Microcicli collegati: {len(collegati)}")
+                    if st.button("\U0001F5D1\uFE0F Elimina macrociclo", key=f"ma_del_{ni}"):
+                        st.session_state.macrocicli.pop(ni)
+                        save_state()
+                        st.rerun()
+        else:
+            st.info("Nessun macrociclo. Creane uno per impostare la stagione.")
+
+    # ---------- MICROCICLI ----------
+    with tab_micro:
+        nomi_macro = [m["nome"] for m in st.session_state.macrocicli]
+        with st.expander("\u2795 Nuovo microciclo (settimana)", expanded=not st.session_state.microcicli):
+            if not nomi_macro:
+                st.warning("Crea prima un macrociclo nella scheda a fianco.")
+            mi1, mi2 = st.columns(2)
+            with mi1:
+                mi_nome = st.text_input("Nome", placeholder="es. Settimana 1", key="mi_nome")
+                mi_macro = st.selectbox("Macrociclo di appartenenza", nomi_macro or ["(crea prima un macrociclo)"], key="mi_macro")
+                mi_inizio = st.date_input("Inizio settimana", value=date.today(), key="mi_inizio")
+            with mi2:
+                mi_obj = st.selectbox("Obiettivo della settimana", OBIETTIVI, key="mi_obj")
+                mi_int = st.selectbox("Intensit\u00e0 target", INTENSITA, index=1, key="mi_int")
+                mi_nsed = st.number_input("N. sedute previste", 1, 10, 3, key="mi_nsed")
+            mi_note = st.text_area("Note / focus settimanale", key="mi_note", height=70)
+            if st.button("\u2795 Crea microciclo", use_container_width=True, key="mi_btn"):
+                if mi_nome.strip() and nomi_macro:
+                    st.session_state.microcicli.append({
+                        "nome": mi_nome.strip(), "macrociclo": mi_macro,
+                        "inizio": mi_inizio.isoformat(), "obiettivo": mi_obj,
+                        "intensita": mi_int, "n_sedute": int(mi_nsed), "note": mi_note.strip(),
+                    })
+                    save_state()
+                    st.success("Microciclo creato!")
+                    st.rerun()
+                else:
+                    st.warning("Serve il nome e almeno un macrociclo.")
+
+        if st.session_state.microcicli:
+            for m in sorted(st.session_state.microcicli, key=lambda x: x.get("inizio", "")):
+                ni = st.session_state.microcicli.index(m)
+                # quante sedute salvate sono gia' collegate a questo microciclo
+                etichetta = f"{m.get('macrociclo','')} \u00b7 {m.get('nome','')}"
+                svolte = sum(1 for s in st.session_state.sedute if s.get("microciclo") == etichetta)
+                with st.expander(f"\U0001F4C6 {m['nome']} \u00b7 {m.get('macrociclo','')} \u00b7 \U0001F3AF {m['obiettivo']} \u00b7 {m['intensita']}"):
+                    st.markdown(f"Inizio: **{m.get('inizio','')}** \u00b7 sedute previste: **{m.get('n_sedute',0)}** \u00b7 svolte: **{svolte}**")
+                    if m.get("note"):
+                        st.caption(m["note"])
+                    if st.button("\U0001F5D1\uFE0F Elimina microciclo", key=f"mi_del_{ni}"):
+                        st.session_state.microcicli.pop(ni)
+                        save_state()
+                        st.rerun()
+        else:
+            st.info("Nessun microciclo. Crea le settimane di lavoro collegate a un macrociclo.")
+
+# ============================================================
+# PRESENZE (mensili)
+# ============================================================
+if menu == "\U0001F4CA Presenze":
+    st.header("\U0001F4CA Registro Presenze Mensile")
+    st.caption("Le presenze vengono registrate dalle sedute salvate nel calendario (presenti/assenti selezionati nel Programma Allenamenti).")
+
+    sedute = [s for s in st.session_state.sedute if s.get("presenti_nomi") is not None]
+    if not st.session_state.rosa:
+        st.info("Aggiungi prima le giocatrici nella sezione **Rosa**.")
+    elif not sedute:
+        st.info("Nessuna seduta con presenze registrate. Genera e salva una seduta selezionando le presenti.")
+    else:
+        mesi = sorted({s["data"][:7] for s in sedute if s.get("data")}, reverse=True)
+        def _label_mese(ym):
+            try:
+                nomi = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno",
+                        "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"]
+                y, mm = ym.split("-")
+                return f"{nomi[int(mm)-1].capitalize()} {y}"
+            except Exception:
+                return ym
+        mese_sel = st.selectbox("Mese", mesi, format_func=_label_mese)
+
+        sedute_mese = [s for s in sedute if s.get("data", "").startswith(mese_sel)]
+        n_sedute = len(sedute_mese)
+        st.markdown(f"**{n_sedute} sedute** nel mese selezionato.")
+
+        righe = []
+        for g in st.session_state.rosa:
+            nome = g["Nome"]
+            pres = sum(1 for s in sedute_mese if nome in (s.get("presenti_nomi") or []))
+            ass = sum(1 for s in sedute_mese if nome in (s.get("assenti_nomi") or []))
+            tot = pres + ass
+            perc = round(100 * pres / tot) if tot else 0
+            righe.append({
+                "Giocatrice": nome, "Ruolo": g.get("Ruolo", ""),
+                "Presenze": pres, "Assenze": ass, "% Presenza": perc,
+            })
+        dfp = pd.DataFrame(righe).sort_values("% Presenza", ascending=False)
+        st.dataframe(dfp, use_container_width=True, hide_index=True)
+
+        if not dfp.empty:
+            st.markdown("### Presenze per giocatrice")
+            st.bar_chart(dfp.set_index("Giocatrice")["Presenze"])
+            media = round(dfp["% Presenza"].mean())
+            cma, cmb, cmc = st.columns(3)
+            cma.metric("Sedute nel mese", n_sedute)
+            cmb.metric("Presenza media", f"{media}%")
+            top = dfp.iloc[0]
+            cmc.metric("Pi\u00f9 presente", f"{top['Giocatrice']} ({top['% Presenza']}%)")
+
+        st.markdown("---")
+        st.markdown("### Dettaglio sedute del mese")
+        for s in sorted(sedute_mese, key=lambda x: x["data"]):
+            pres = ", ".join(s.get("presenti_nomi") or []) or "\u2014"
+            ass = ", ".join(s.get("assenti_nomi") or []) or "nessuna"
+            st.markdown(
+                f"<div class='block-seduta'><b>{s['data']}</b> \u00b7 \U0001F3AF {s['obiettivo']} \u00b7 {s['intensita']}<br>"
+                f"<span style='color:#5be59a'>\u2705 {_html.escape(pres)}</span><br>"
+                f"<span style='color:#ff8f80'>\u274C {_html.escape(ass)}</span></div>",
+                unsafe_allow_html=True,
+            )
+
+        # Esporta il registro presenze del mese in CSV
+        csv = dfp.to_csv(index=False).encode("utf-8")
+        st.download_button("\u2B07\uFE0F Scarica il registro del mese (CSV)", data=csv,
+                           file_name=f"presenze_{mese_sel}.csv", mime="text/csv")
