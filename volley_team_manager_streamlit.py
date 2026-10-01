@@ -59,6 +59,22 @@ OBIETTIVI = [
 INTENSITA = ["Scarico", "Medio", "Carico", "Pre-partita"]
 FASI = ["Riscaldamento", "Centrale", "Situazionale", "Defaticamento"]
 
+# Giorni della settimana (0 = lunedi)
+GIORNI_IT = ["Luned\u00ec", "Marted\u00ec", "Mercoled\u00ec", "Gioved\u00ec", "Venerd\u00ec", "Sabato", "Domenica"]
+
+# Settimana tipo di DEFAULT (chiavi stringa per compatibilit\u00e0 JSON)
+#  Luned\u00ec: prevenzione, fisico e tecnica individuale
+#  Marted\u00ec: attacco e difesa
+#  Gioved\u00ec: battuta e ricezione
+SCHEMA_DEFAULT = {
+    "0": {"nome": "Prevenzione, Fisico e Tecnica individuale",
+          "obiettivi": ["Condizione fisica", "Tecnica generale"], "prevenzione": True},
+    "1": {"nome": "Attacco e Difesa",
+          "obiettivi": ["Attacco", "Muro-Difesa"], "prevenzione": False},
+    "3": {"nome": "Battuta e Ricezione",
+          "obiettivi": ["Battuta", "Ricezione"], "prevenzione": False},
+}
+
 # ============================================================
 # CSS
 # ============================================================
@@ -266,7 +282,8 @@ def _state_dict():
         "sedute": st.session_state.sedute,
         "macrocicli": st.session_state.get("macrocicli", []),
         "microcicli": st.session_state.get("microcicli", []),
-        "versione": 3,
+        "schema_settimanale": st.session_state.get("schema_settimanale", dict(SCHEMA_DEFAULT)),
+        "versione": 4,
     }
 
 
@@ -303,6 +320,8 @@ def _apply_data(data):
     st.session_state.sedute = data.get("sedute", [])
     st.session_state.macrocicli = data.get("macrocicli", [])
     st.session_state.microcicli = data.get("microcicli", [])
+    sch = data.get("schema_settimanale")
+    st.session_state.schema_settimanale = sch if isinstance(sch, dict) and sch else dict(SCHEMA_DEFAULT)
 
 
 def load_state():
@@ -340,6 +359,7 @@ if "initialized" not in st.session_state:
     st.session_state.sedute = []
     st.session_state.macrocicli = []
     st.session_state.microcicli = []
+    st.session_state.schema_settimanale = dict(SCHEMA_DEFAULT)
     load_state()
     # assicura comunque la colonna Disegno
     if "Disegno" not in st.session_state.esercizi.columns:
@@ -349,6 +369,8 @@ if "initialized" not in st.session_state:
         st.session_state.macrocicli = []
     if "microcicli" not in st.session_state:
         st.session_state.microcicli = []
+    if "schema_settimanale" not in st.session_state:
+        st.session_state.schema_settimanale = dict(SCHEMA_DEFAULT)
     st.session_state.initialized = True
 
 # Guardie di sicurezza: assicurano che le chiavi esistano SEMPRE,
@@ -364,6 +386,8 @@ if "macrocicli" not in st.session_state:
     st.session_state.macrocicli = []
 if "microcicli" not in st.session_state:
     st.session_state.microcicli = []
+if "schema_settimanale" not in st.session_state:
+    st.session_state.schema_settimanale = dict(SCHEMA_DEFAULT)
 
 
 # ============================================================
@@ -548,6 +572,82 @@ def genera_seduta(obiettivo, durata_tot, intensita, n_presenti, seed=None):
             if usati >= minuti_fase and seduta and seduta[-1]["Fase"] == fase:
                 break
             seduta.append(ex)
+            usati += int(ex["Durata_min"])
+            if usati >= minuti_fase:
+                break
+    return seduta, budget
+
+
+def _quote_macro(fase_macro):
+    """Restituisce i moltiplicatori delle fasi in base alla fase del macrociclo.
+    Modula l'enfasi dell'allenamento lungo la periodizzazione:
+      - Preparazione generale: tanto fisico/riscaldamento, poco situazionale
+      - Preparazione specifica: equilibrio, pi\u00f9 centrale tecnico
+      - Pre-competitivo: molto situazionale/gioco, meno fisico
+      - Competitivo (mantenimento): situazionale alto, carichi contenuti
+      - Transizione (scarico): volumi bassi, prevalenza riscaldamento/defaticamento
+    """
+    fm = (fase_macro or "").lower()
+    if "generale" in fm or "prepar" in fm and "spec" not in fm:
+        return {"Riscaldamento": 1.25, "Centrale": 1.15, "Situazionale": 0.70, "Defaticamento": 1.10}
+    if "specific" in fm:
+        return {"Riscaldamento": 1.00, "Centrale": 1.20, "Situazionale": 1.00, "Defaticamento": 1.00}
+    if "pre-comp" in fm or "pre comp" in fm or "precomp" in fm or "pre-camp" in fm or "pre camp" in fm or "precamp" in fm:
+        return {"Riscaldamento": 0.90, "Centrale": 0.90, "Situazionale": 1.35, "Defaticamento": 0.95}
+    if "comp" in fm or "manteni" in fm or "gara" in fm:
+        return {"Riscaldamento": 0.90, "Centrale": 0.85, "Situazionale": 1.40, "Defaticamento": 1.00}
+    if "transiz" in fm or "scarico" in fm or "recup" in fm:
+        return {"Riscaldamento": 1.30, "Centrale": 0.80, "Situazionale": 0.70, "Defaticamento": 1.40}
+    return {"Riscaldamento": 1.0, "Centrale": 1.0, "Situazionale": 1.0, "Defaticamento": 1.0}
+
+
+def genera_seduta_multi(obiettivi_list, durata_tot, intensita, n_presenti,
+                        fase_macro=None, prevenzione=False, seed=None):
+    """Genera una seduta con PIU' obiettivi tecnici (settimana tipo) e tiene
+    conto della fase del macrociclo tramite _quote_macro.
+    - obiettivi_list: lista di obiettivi (es. ["Attacco", "Muro-Difesa"])
+    - fase_macro: nome della fase del macrociclo collegato (modula le fasi)
+    - prevenzione: se True privilegia esercizi di condizione fisica nel riscaldamento
+    """
+    rng = random.Random(seed)
+    df = st.session_state.esercizi.copy()
+    df = df[df["Min_Giocatrici"] <= max(n_presenti, 1)]
+    base = _durata_fasi(durata_tot, intensita)
+    mult = _quote_macro(fase_macro)
+    # applica i moltiplicatori del macrociclo e ri-normalizza sul tempo totale
+    pesata = {f: base[f] * mult.get(f, 1.0) for f in base}
+    somma = sum(pesata.values()) or 1
+    budget = {f: max(5, round(durata_tot * (pesata[f] / somma))) for f in pesata}
+
+    obiettivi_list = [o for o in (obiettivi_list or []) if o] or ["Tecnica generale"]
+    ordine_fasi = ["Riscaldamento", "Centrale", "Situazionale", "Defaticamento"]
+    seduta = []
+    gia_usati = set()
+    for fase in ordine_fasi:
+        minuti_fase = budget[fase]
+        pool = df[df["Fase"] == fase]
+        if fase == "Riscaldamento" and prevenzione:
+            prev = pool[pool["Obiettivo"] == "Condizione fisica"]
+            altri = pool[pool["Obiettivo"] != "Condizione fisica"]
+            pool = pd.concat([prev, altri])
+        elif fase in ("Centrale", "Situazionale"):
+            mirati = pool[pool["Obiettivo"].isin(obiettivi_list)]
+            altri = pool[~pool["Obiettivo"].isin(obiettivi_list)]
+            cand_m = mirati.to_dict("records")
+            rng.shuffle(cand_m)
+            pool = pd.concat([pd.DataFrame(cand_m) if cand_m else mirati, altri])
+        candidati = pool.to_dict("records")
+        if fase in ("Riscaldamento", "Defaticamento"):
+            rng.shuffle(candidati)
+        usati = 0
+        for ex in candidati:
+            key = ex.get("Nome", id(ex))
+            if key in gia_usati:
+                continue
+            if usati >= minuti_fase and any(s["Fase"] == fase for s in seduta):
+                break
+            seduta.append(ex)
+            gia_usati.add(key)
             usati += int(ex["Durata_min"])
             if usati >= minuti_fase:
                 break
@@ -916,17 +1016,51 @@ if menu == "\U0001F4CB Programma Allenamenti":
     obj_default = micro_sel.get("obiettivo") if micro_sel and micro_sel.get("obiettivo") in OBIETTIVI else None
     int_default = micro_sel.get("intensita") if micro_sel and micro_sel.get("intensita") in INTENSITA else None
 
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
+    # fase del macrociclo collegato (per modulare le fasi della seduta)
+    fase_macro = None
+    if micro_sel:
+        _nome_macro = micro_sel.get("macrociclo")
+        for _m in st.session_state.get("macrocicli", []):
+            if _m.get("nome") == _nome_macro:
+                fase_macro = _m.get("fase")
+                break
+
+    # ---- Data e FOCUS del giorno (settimana tipo) ----
+    cdt1, cdt2 = st.columns([1, 2])
+    with cdt1:
         data_seduta = st.date_input("Data", value=date.today())
+    wd = data_seduta.weekday()
+    schema = st.session_state.get("schema_settimanale", dict(SCHEMA_DEFAULT))
+    giorno_cfg = schema.get(str(wd))
+    with cdt2:
+        if giorno_cfg:
+            st.success("\U0001F4C5 **" + GIORNI_IT[wd] + "** \u2014 focus del giorno: **" + giorno_cfg.get('nome', '') + "**")
+        else:
+            st.info("\U0001F4C5 **" + GIORNI_IT[wd] + "** \u2014 nessun focus predefinito (seduta libera).")
+
+    obj_precompilati = []
+    if giorno_cfg:
+        obj_precompilati = [o for o in giorno_cfg.get("obiettivi", []) if o in OBIETTIVI]
+    if not obj_precompilati and obj_default:
+        obj_precompilati = [obj_default]
+    if not obj_precompilati:
+        obj_precompilati = [OBIETTIVI[0]]
+    prev_precompilata = bool(giorno_cfg.get("prevenzione")) if giorno_cfg else False
+
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        obiettivi = st.multiselect("Obiettivi della seduta", OBIETTIVI, default=obj_precompilati,
+                                   help="Precompilati in base al focus del giorno e al microciclo. Puoi modificarli.")
     with c2:
-        obiettivo = st.selectbox("Obiettivo della seduta", OBIETTIVI,
-                                 index=OBIETTIVI.index(obj_default) if obj_default else 0)
-    with c3:
         intensita = st.selectbox("Intensit\u00e0", INTENSITA,
                                  index=INTENSITA.index(int_default) if int_default else 1)
-    with c4:
+    with c3:
         durata = st.slider("Durata (min)", 60, 150, 90, step=15)
+
+    prevenzione = st.checkbox("\U0001FA79 Includi prevenzione/fisico nel riscaldamento",
+                              value=prev_precompilata)
+    if fase_macro:
+        st.caption("\U0001F9E9 Fase macrociclo: **" + str(fase_macro) + "** \u2014 fasi della seduta modulate di conseguenza.")
 
     default_n = len(presenti) if presenti else max(len(giocatrici_disponibili()), 1)
     n_presenti = st.number_input("Numero di giocatrici presenti", min_value=1, max_value=30,
@@ -940,15 +1074,18 @@ if menu == "\U0001F4CB Programma Allenamenti":
 
     if genera or rigenera:
         seed = random.randint(0, 999999) if rigenera else 42
-        seduta, budget = genera_seduta(obiettivo, durata, intensita, int(n_presenti), seed=seed)
+        obj_eff = obiettivi or [OBIETTIVI[0]]
+        seduta, budget = genera_seduta_multi(obj_eff, durata, intensita, int(n_presenti),
+                                             fase_macro=fase_macro, prevenzione=prevenzione, seed=seed)
         st.session_state._ultima_seduta = {
-            "data": data_seduta.isoformat(), "obiettivo": obiettivo,
+            "data": data_seduta.isoformat(), "obiettivo": " + ".join(obj_eff),
             "intensita": intensita, "durata": int(durata),
             "presenti": int(n_presenti),
             "presenti_nomi": [g["Nome"] for g in presenti],
             "assenti_nomi": [g["Nome"] for g in assenti],
             "composizione": conta_ruoli(presenti) if presenti else {},
             "microciclo": (f"{micro_sel.get('macrociclo','')} \u00b7 {micro_sel.get('nome','')}" if micro_sel else ""),
+            "fase_macro": fase_macro or "",
             "esercizi": seduta,
         }
 
@@ -960,6 +1097,8 @@ if menu == "\U0001F4CB Programma Allenamenti":
         st.caption(f"\U0001F4C5 {ult['data']} \u00b7 durata stimata **{tot} min** \u00b7 {ult['presenti']} presenti")
         if ult.get("microciclo"):
             st.caption("\U0001F9E9 Microciclo: " + ult["microciclo"])
+        if ult.get("fase_macro"):
+            st.caption("\U0001F4C8 Fase macrociclo: " + ult["fase_macro"])
         if ult.get("presenti_nomi"):
             st.markdown(chip_ruoli([g for g in st.session_state.rosa if g["Nome"] in ult["presenti_nomi"]]), unsafe_allow_html=True)
             st.caption("\u2705 " + ", ".join(ult["presenti_nomi"]))
@@ -1272,6 +1411,45 @@ if menu == "\U0001F9E9 Periodizzazione":
                   "Competizione", "Transizione / scarico"]
 
     tab_macro, tab_micro = st.tabs(["\U0001F5FA\uFE0F Macrocicli", "\U0001F4C6 Microcicli"])
+
+    # ---------- SETTIMANA TIPO (schema di default per giorno) ----------
+    with st.expander("\U0001F5D3\uFE0F Settimana tipo \u2014 allenamenti di default per giorno", expanded=False):
+        st.caption("Imposta il focus ricorrente di ogni giorno: nel **Programma Allenamenti** gli obiettivi "
+                   "vengono precompilati in base al giorno scelto. Lascia vuoti gli obiettivi per rendere il giorno 'libero'.")
+        _schema = st.session_state.get("schema_settimanale", dict(SCHEMA_DEFAULT))
+        _nuovo_schema = {}
+        for _d in range(7):
+            _cfg = _schema.get(str(_d), {})
+            with st.container():
+                st.markdown("**" + GIORNI_IT[_d] + "**")
+                sc1, sc2, sc3 = st.columns([2, 3, 1])
+                with sc1:
+                    _nome_g = st.text_input("Nome focus", value=_cfg.get("nome", ""),
+                                            key=f"sch_nome_{_d}", label_visibility="collapsed",
+                                            placeholder="es. Attacco e Difesa (vuoto = libero)")
+                with sc2:
+                    _obj_def = [o for o in _cfg.get("obiettivi", []) if o in OBIETTIVI]
+                    _obj_g = st.multiselect("Obiettivi", OBIETTIVI, default=_obj_def,
+                                            key=f"sch_obj_{_d}", label_visibility="collapsed",
+                                            placeholder="Obiettivi del giorno")
+                with sc3:
+                    _prev_g = st.checkbox("\U0001FA79", value=bool(_cfg.get("prevenzione")),
+                                          key=f"sch_prev_{_d}", help="Prevenzione/fisico nel riscaldamento")
+                if _nome_g.strip() or _obj_g:
+                    _nuovo_schema[str(_d)] = {"nome": _nome_g.strip(), "obiettivi": _obj_g, "prevenzione": _prev_g}
+        bsc1, bsc2 = st.columns(2)
+        with bsc1:
+            if st.button("\U0001F4BE Salva settimana tipo", use_container_width=True, key="sch_save"):
+                st.session_state.schema_settimanale = _nuovo_schema
+                save_state()
+                st.success("Settimana tipo salvata!")
+                st.rerun()
+        with bsc2:
+            if st.button("\u21A9\uFE0F Ripristina default", use_container_width=True, key="sch_reset"):
+                st.session_state.schema_settimanale = dict(SCHEMA_DEFAULT)
+                save_state()
+                st.success("Ripristinata la settimana tipo di default.")
+                st.rerun()
 
     # ---------- MACROCICLI ----------
     with tab_macro:
