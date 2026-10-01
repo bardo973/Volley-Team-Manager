@@ -351,6 +351,20 @@ if "initialized" not in st.session_state:
         st.session_state.microcicli = []
     st.session_state.initialized = True
 
+# Guardie di sicurezza: assicurano che le chiavi esistano SEMPRE,
+# anche quando la sessione proviene da una versione precedente dell'app
+# (su Streamlit Cloud lo stato della sessione pu\u00f2 sopravvivere al deploy).
+if "rosa" not in st.session_state:
+    st.session_state.rosa = []
+if "sedute" not in st.session_state:
+    st.session_state.sedute = []
+if "esercizi" not in st.session_state:
+    st.session_state.esercizi = pd.DataFrame(ESERCIZI_DEFAULT)
+if "macrocicli" not in st.session_state:
+    st.session_state.macrocicli = []
+if "microcicli" not in st.session_state:
+    st.session_state.microcicli = []
+
 
 # ============================================================
 # HELPER
