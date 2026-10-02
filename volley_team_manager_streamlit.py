@@ -1065,6 +1065,20 @@ if menu == "\U0001F3E0 Dashboard":
                 unsafe_allow_html=True,
             )
 
+        _min_fond = {}
+        for _s in st.session_state.sedute:
+            for _ex in _s.get("esercizi", []):
+                _f = str(_ex.get("Fondamentale", "")).strip() or "Altro"
+                try:
+                    _min_fond[_f] = _min_fond.get(_f, 0) + int(_ex.get("Durata_min", 0) or 0)
+                except Exception:
+                    pass
+        if _min_fond:
+            st.markdown("### \u23F1\uFE0F Carico per fondamentale (minuti allenati)")
+            st.caption("Minuti totali dedicati a ogni fondamentale nelle sedute salvate: ti aiuta a bilanciare il lavoro.")
+            _dff = pd.DataFrame(sorted(_min_fond.items(), key=lambda kv: kv[1], reverse=True), columns=["Fondamentale", "Minuti"])
+            st.bar_chart(_dff.set_index("Fondamentale")["Minuti"])
+
 # ============================================================
 # ROSA
 # ============================================================
@@ -1410,6 +1424,20 @@ if menu == "\U0001F4CB Programma Allenamenti":
                     nuovo["Fase"] = e["Fase"]  # mantieni la fase nella seduta
                     es_list[i] = nuovo
                     st.rerun()
+                # Alternativa casuale: stesso fondamentale (o stessa fase), esercizio diverso
+                if st.button("\U0001F3B2 Proponi alternativa casuale (stesso tipo)",
+                             key=f"rnd_btn_{i}", use_container_width=True):
+                    _dfe = st.session_state.esercizi
+                    _cand = _dfe[(_dfe["Fondamentale"] == e["Fondamentale"]) & (_dfe["Nome"] != e["Nome"])]
+                    if _cand.empty:
+                        _cand = _dfe[(_dfe["Fase"] == e["Fase"]) & (_dfe["Nome"] != e["Nome"])]
+                    if _cand.empty:
+                        st.warning("Non ho un'alternativa dello stesso tipo in libreria.")
+                    else:
+                        nuovo = _cand.sample(1).iloc[0].to_dict()
+                        nuovo["Fase"] = e["Fase"]
+                        es_list[i] = nuovo
+                        st.rerun()
                 # Modifica puntuale dei campi
                 mc1, mc2, mc3 = st.columns(3)
                 en = mc1.text_input("Nome", value=str(e["Nome"]), key=f"ed_nome_{i}")
@@ -1419,7 +1447,7 @@ if menu == "\U0001F4CB Programma Allenamenti":
                                      key=f"ed_liv_{i}")
                 edesc = st.text_area("Descrizione", value=str(e["Descrizione"]), key=f"ed_desc_{i}", height=80)
                 evar = st.text_input("Variante", value=str(e["Varianti"]), key=f"ed_var_{i}")
-                b1, b2, b3, b4 = st.columns(4)
+                b1, b2, b3, b4, b5 = st.columns(5)
                 if b1.button("\U0001F4BE Salva", key=f"ed_save_{i}", use_container_width=True):
                     e["Nome"] = en.strip(); e["Durata_min"] = int(edur); e["Livello"] = eliv
                     e["Descrizione"] = edesc.strip(); e["Varianti"] = evar.strip()
@@ -1430,7 +1458,10 @@ if menu == "\U0001F4CB Programma Allenamenti":
                 if b3.button("\u2B07\uFE0F Gi\u00f9", key=f"ed_down_{i}", use_container_width=True, disabled=(i == len(es_list) - 1)):
                     es_list[i + 1], es_list[i] = es_list[i], es_list[i + 1]
                     st.rerun()
-                if b4.button("\U0001F5D1\uFE0F Rimuovi", key=f"ed_del_{i}", use_container_width=True):
+                if b4.button("\U0001F4CB Duplica", key=f"ed_dup_{i}", use_container_width=True):
+                    es_list.insert(i + 1, dict(e))
+                    st.rerun()
+                if b5.button("\U0001F5D1\uFE0F Rimuovi", key=f"ed_del_{i}", use_container_width=True):
                     es_list.pop(i)
                     st.rerun()
 
