@@ -1376,6 +1376,28 @@ if menu == "\U0001F5D3\uFE0F Calendario":
                     st.caption("\u2705 Presenti: " + ", ".join(s["presenti_nomi"]))
                 if s.get("assenti_nomi"):
                     st.caption("\u274C Assenti: " + ", ".join(s["assenti_nomi"]))
+
+                # --- Modifica presenze anche dopo il salvataggio ---
+                with st.popover("\u270F\uFE0F Modifica presenze"):
+                    if st.session_state.rosa:
+                        _nomi_rosa = [g["Nome"] for g in st.session_state.rosa]
+                        _pres_corr = [n for n in (s.get("presenti_nomi") or []) if n in _nomi_rosa]
+                        _sel_pres = st.multiselect(
+                            "Chi era presente", _nomi_rosa, default=_pres_corr,
+                            key=f"editpres_{i}",
+                            help="Aggiorna le atlete presenti: chi non selezioni risulter\u00e0 assente.")
+                        if st.button("\U0001F4BE Salva presenze", key=f"savepres_{i}", use_container_width=True):
+                            _assenti_nomi = [n for n in _nomi_rosa if n not in _sel_pres]
+                            s["presenti_nomi"] = _sel_pres
+                            s["assenti_nomi"] = _assenti_nomi
+                            s["presenti"] = len(_sel_pres)
+                            _pres_obj = [g for g in st.session_state.rosa if g["Nome"] in _sel_pres]
+                            s["composizione"] = conta_ruoli(_pres_obj)
+                            save_state()
+                            st.success("Presenze aggiornate!")
+                            st.rerun()
+                    else:
+                        st.info("Aggiungi prima le giocatrici nella sezione Rosa.")
                 fase_corrente = None
                 for e in s["esercizi"]:
                     if e["Fase"] != fase_corrente:
