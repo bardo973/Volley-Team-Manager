@@ -1762,6 +1762,57 @@ if menu == "\U0001F5D3\uFE0F Calendario":
         st.bar_chart(dfc.set_index("Data")["Carico"])
         st.caption("Consiglio: evita due sedute a carico alto consecutive e programma uno scarico prima della gara.")
 
+        # ---- Riepilogo mensile delle note post-allenamento ----
+        st.markdown("---")
+        st.markdown("### \U0001F4DD Riepilogo mensile delle note")
+        _mesi_disp = sorted({s["data"][:7] for s in sedute if s.get("data")}, reverse=True)
+        if not _mesi_disp:
+            st.caption("Nessuna seduta registrata.")
+        else:
+            _mese_note = st.selectbox("Mese", _mesi_disp, key="mese_note_sel")
+            _sed_mese = [s for s in sedute if s.get("data", "").startswith(_mese_note)]
+            _con_note = [s for s in _sed_mese if (s.get("note") or "").strip()]
+
+            cN1, cN2, cN3 = st.columns(3)
+            cN1.metric("Sedute nel mese", len(_sed_mese))
+            cN2.metric("Con note", len(_con_note))
+            _min_tot = sum(int(e["Durata_min"]) for s in _sed_mese for e in s.get("esercizi", []))
+            cN3.metric("Minuti allenati", _min_tot)
+
+            if not _con_note:
+                st.info("Nessuna nota post-allenamento per questo mese. Scrivile aprendo la singola seduta qui sopra.")
+            else:
+                for s in sorted(_con_note, key=lambda x: x["data"]):
+                    st.markdown(
+                        "<div class='block-seduta'><b>\U0001F4C5 " + s["data"] + "</b> \u00b7 \U0001F3AF " +
+                        _html.escape(str(s.get("obiettivo", ""))) + " \u00b7 " + _html.escape(str(s.get("intensita", ""))) +
+                        "<br><span style='color:#c9d6ea'>" + _html.escape(str(s.get("note", ""))).replace(chr(10), "<br>") +
+                        "</span></div>",
+                        unsafe_allow_html=True,
+                    )
+
+                # Testo scaricabile del riepilogo
+                _rows_txt = []
+                for s in sorted(_con_note, key=lambda x: x["data"]):
+                    _rows_txt.append(
+                        s["data"] + " \u2014 " + str(s.get("obiettivo", "")) + " (" + str(s.get("intensita", "")) + ")\n"
+                        + "  " + str(s.get("note", "")).replace(chr(10), "\n  ") + "\n"
+                    )
+                _riepilogo = (
+                    "RIEPILOGO NOTE POST-ALLENAMENTO \u2014 " + _mese_note + "\n"
+                    + "=" * 44 + "\n"
+                    + "Sedute: " + str(len(_sed_mese)) + "  \u00b7  Con note: " + str(len(_con_note))
+                    + "  \u00b7  Minuti allenati: " + str(_min_tot) + "\n\n"
+                    + "\n".join(_rows_txt)
+                )
+                st.download_button(
+                    "\U0001F4E5 Scarica il riepilogo del mese",
+                    data=_riepilogo.encode("utf-8"),
+                    file_name="note_mensili_" + _mese_note + ".txt",
+                    mime="text/plain",
+                    key="dl_note_mese",
+                )
+
 # ============================================================
 # PERIODIZZAZIONE (macrocicli e microcicli)
 # ============================================================
