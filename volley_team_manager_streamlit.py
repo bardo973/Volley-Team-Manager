@@ -40,6 +40,15 @@ st.set_page_config(
 SAVE_FILE = "volleycoach_state.pkl"
 BAK_FILE = "volleycoach_state.pkl.bak"
 
+# Tema grafico predefinito (colori della squadra, personalizzabili dall'app)
+TEMA_DEFAULT = {
+    "nome_squadra": "VolleyCoach",
+    "sottotitolo": "Gestione squadra \u00b7 Serie D femminile",
+    "colore1": "#ff9f1c",   # colore principale
+    "colore2": "#ffbf69",   # colore secondario / chiaro
+    "logo": "",             # logo squadra in base64 (opzionale)
+}
+
 # Ruoli pallavolo
 RUOLI = {
     "P": "Palleggiatrice",
@@ -283,6 +292,7 @@ def _state_dict():
         "macrocicli": st.session_state.get("macrocicli", []),
         "microcicli": st.session_state.get("microcicli", []),
         "schema_settimanale": st.session_state.get("schema_settimanale", dict(SCHEMA_DEFAULT)),
+        "tema_squadra": st.session_state.get("tema_squadra", dict(TEMA_DEFAULT)),
         "versione": 4,
     }
 
@@ -322,6 +332,13 @@ def _apply_data(data):
     st.session_state.microcicli = data.get("microcicli", [])
     sch = data.get("schema_settimanale")
     st.session_state.schema_settimanale = sch if isinstance(sch, dict) and sch else dict(SCHEMA_DEFAULT)
+    tem = data.get("tema_squadra")
+    if isinstance(tem, dict) and tem:
+        _t = dict(TEMA_DEFAULT)
+        _t.update(tem)
+        st.session_state.tema_squadra = _t
+    else:
+        st.session_state.tema_squadra = dict(TEMA_DEFAULT)
 
 
 def load_state():
@@ -360,6 +377,7 @@ if "initialized" not in st.session_state:
     st.session_state.macrocicli = []
     st.session_state.microcicli = []
     st.session_state.schema_settimanale = dict(SCHEMA_DEFAULT)
+    st.session_state.tema_squadra = dict(TEMA_DEFAULT)
     load_state()
     # assicura comunque la colonna Disegno
     if "Disegno" not in st.session_state.esercizi.columns:
@@ -371,6 +389,8 @@ if "initialized" not in st.session_state:
         st.session_state.microcicli = []
     if "schema_settimanale" not in st.session_state:
         st.session_state.schema_settimanale = dict(SCHEMA_DEFAULT)
+    if "tema_squadra" not in st.session_state:
+        st.session_state.tema_squadra = dict(TEMA_DEFAULT)
     st.session_state.initialized = True
 
 # Guardie di sicurezza: assicurano che le chiavi esistano SEMPRE,
@@ -388,6 +408,29 @@ if "microcicli" not in st.session_state:
     st.session_state.microcicli = []
 if "schema_settimanale" not in st.session_state:
     st.session_state.schema_settimanale = dict(SCHEMA_DEFAULT)
+if "tema_squadra" not in st.session_state:
+    st.session_state.tema_squadra = dict(TEMA_DEFAULT)
+
+# Applica il TEMA della squadra: sovrascrive i colori accento del CSS base
+# con i colori scelti dall'utente (coerenti in badge, pulsanti, header, grafici).
+_tema = st.session_state.get("tema_squadra", TEMA_DEFAULT)
+_c1 = _tema.get("colore1") or TEMA_DEFAULT["colore1"]
+_c2 = _tema.get("colore2") or TEMA_DEFAULT["colore2"]
+st.markdown(
+    "<style>"
+    ":root{--vc-accent:" + _c1 + ";--vc-accent2:" + _c2 + ";}"
+    ".stApp{background:"
+    "radial-gradient(1200px 600px at 15% -10%," + _c1 + "1a,transparent 60%),"
+    "radial-gradient(1000px 500px at 110% 0%," + _c2 + "1f,transparent 55%),"
+    "linear-gradient(180deg,var(--vc-bg1) 0%,var(--vc-bg2) 100%);}"
+    "h2{border-bottom-color:" + _c1 + "40 !important;}"
+    ".stButton>button:hover{box-shadow:0 6px 18px " + _c1 + "73 !important;}"
+    ".vc-hero{background:linear-gradient(120deg," + _c1 + "29," + _c2 + "24) !important;"
+    "border-left:5px solid " + _c1 + " !important;}"
+    ".vc-logo{height:46px;width:auto;border-radius:10px;vertical-align:middle;margin-right:10px;}"
+    "</style>",
+    unsafe_allow_html=True,
+)
 
 
 # ============================================================
@@ -730,8 +773,14 @@ def importa_da_link(url):
 # SIDEBAR
 # ============================================================
 with st.sidebar:
-    st.title("\U0001F3D0 VolleyCoach")
-    st.caption("Gestione squadra \u00b7 Serie D femminile")
+    _t = st.session_state.get("tema_squadra", TEMA_DEFAULT)
+    if _t.get("logo"):
+        st.markdown(
+            "<div style='text-align:center'><img src='" + _t["logo"] + "' class='vc-logo' style='height:72px'></div>",
+            unsafe_allow_html=True,
+        )
+    st.title("\U0001F3D0 " + (_t.get("nome_squadra") or "VolleyCoach"))
+    st.caption(_t.get("sottotitolo") or "Gestione squadra")
     st.markdown("---")
     disp = len(giocatrici_disponibili())
     st.metric("Giocatrici in rosa", len(st.session_state.rosa))
@@ -762,6 +811,70 @@ with st.sidebar:
             except Exception as e:
                 st.error(f"File non valido: {e}")
 
+    st.markdown("---")
+    st.markdown("### \U0001F3A8 Tema squadra")
+    st.caption("Personalizza nome, sottotitolo, colori e logo: l'app si veste con i colori della tua squadra.")
+    with st.expander("Personalizza il tema", expanded=False):
+        _tt = st.session_state.get("tema_squadra", TEMA_DEFAULT)
+        _nome_sq = st.text_input("Nome squadra", value=_tt.get("nome_squadra", ""), key="tema_nome")
+        _sotto = st.text_input("Sottotitolo", value=_tt.get("sottotitolo", ""), key="tema_sotto")
+        tcol1, tcol2 = st.columns(2)
+        with tcol1:
+            _col1 = st.color_picker("Colore principale", value=_tt.get("colore1", "#ff9f1c"), key="tema_col1")
+        with tcol2:
+            _col2 = st.color_picker("Colore secondario", value=_tt.get("colore2", "#ffbf69"), key="tema_col2")
+        st.caption("\U0001F3A8 Preset rapidi:")
+        pr1, pr2, pr3, pr4 = st.columns(4)
+        _presets = {
+            "Arancio": ("#ff9f1c", "#ffbf69"),
+            "Blu": ("#2d6eff", "#6ea8ff"),
+            "Rosso": ("#e63946", "#ff7b86"),
+            "Verde": ("#2a9d8f", "#64d6c6"),
+        }
+        _preset_scelto = None
+        if pr1.button("Arancio", key="pr_ar", use_container_width=True):
+            _preset_scelto = "Arancio"
+        if pr2.button("Blu", key="pr_bl", use_container_width=True):
+            _preset_scelto = "Blu"
+        if pr3.button("Rosso", key="pr_ro", use_container_width=True):
+            _preset_scelto = "Rosso"
+        if pr4.button("Verde", key="pr_ve", use_container_width=True):
+            _preset_scelto = "Verde"
+        if _preset_scelto:
+            c1p, c2p = _presets[_preset_scelto]
+            nuovo_tema = dict(_tt)
+            nuovo_tema["colore1"] = c1p
+            nuovo_tema["colore2"] = c2p
+            st.session_state.tema_squadra = nuovo_tema
+            save_state()
+            st.rerun()
+        _logo_up = st.file_uploader("Logo squadra (PNG/JPG)", type=["png", "jpg", "jpeg"], key="tema_logo_up")
+        if _tt.get("logo"):
+            if st.checkbox("\U0001F5D1\uFE0F Rimuovi logo attuale", key="tema_logo_del"):
+                nuovo_tema = dict(_tt)
+                nuovo_tema["logo"] = ""
+                st.session_state.tema_squadra = nuovo_tema
+                save_state()
+                st.rerun()
+        if st.button("\U0001F4BE Salva tema", use_container_width=True, key="tema_save"):
+            nuovo_tema = dict(_tt)
+            nuovo_tema["nome_squadra"] = _nome_sq.strip() or "VolleyCoach"
+            nuovo_tema["sottotitolo"] = _sotto.strip()
+            nuovo_tema["colore1"] = _col1
+            nuovo_tema["colore2"] = _col2
+            if _logo_up is not None:
+                _b64 = file_to_base64_png(_logo_up)
+                if _b64:
+                    nuovo_tema["logo"] = _b64
+            st.session_state.tema_squadra = nuovo_tema
+            save_state()
+            st.success("Tema salvato!")
+            st.rerun()
+        if st.button("\u21A9\uFE0F Ripristina tema di default", use_container_width=True, key="tema_reset"):
+            st.session_state.tema_squadra = dict(TEMA_DEFAULT)
+            save_state()
+            st.rerun()
+
 # ============================================================
 # MENU
 # ============================================================
@@ -778,9 +891,13 @@ st.markdown("---")
 # DASHBOARD
 # ============================================================
 if menu == "\U0001F3E0 Dashboard":
+    _th = st.session_state.get("tema_squadra", TEMA_DEFAULT)
+    _logo_html = ("<img src='" + _th["logo"] + "' class='vc-logo'>" if _th.get("logo") else "\U0001F3D0 ")
+    _nome_h = _html.escape(_th.get("nome_squadra") or "VolleyCoach Manager")
+    _sotto_h = _html.escape(_th.get("sottotitolo") or "Il tuo pannello di controllo per la squadra")
     st.markdown(
-        "<div class='vc-hero'><h1>\U0001F3D0 VolleyCoach Manager</h1>"
-        "<p>Il tuo pannello di controllo per la squadra \u00b7 Serie D femminile</p></div>",
+        "<div class='vc-hero'><h1>" + _logo_html + _nome_h + "</h1>"
+        "<p>" + _sotto_h + "</p></div>",
         unsafe_allow_html=True,
     )
     if not st.session_state.rosa:
