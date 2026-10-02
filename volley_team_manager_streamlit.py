@@ -293,6 +293,7 @@ def _state_dict():
         "microcicli": st.session_state.get("microcicli", []),
         "schema_settimanale": st.session_state.get("schema_settimanale", dict(SCHEMA_DEFAULT)),
         "tema_squadra": st.session_state.get("tema_squadra", dict(TEMA_DEFAULT)),
+        "gare": st.session_state.get("gare", []),
         "versione": 4,
     }
 
@@ -339,6 +340,7 @@ def _apply_data(data):
         st.session_state.tema_squadra = _t
     else:
         st.session_state.tema_squadra = dict(TEMA_DEFAULT)
+    st.session_state.gare = data.get("gare", [])
 
 
 def load_state():
@@ -378,6 +380,7 @@ if "initialized" not in st.session_state:
     st.session_state.microcicli = []
     st.session_state.schema_settimanale = dict(SCHEMA_DEFAULT)
     st.session_state.tema_squadra = dict(TEMA_DEFAULT)
+    st.session_state.gare = []
     load_state()
     # assicura comunque la colonna Disegno
     if "Disegno" not in st.session_state.esercizi.columns:
@@ -391,6 +394,8 @@ if "initialized" not in st.session_state:
         st.session_state.schema_settimanale = dict(SCHEMA_DEFAULT)
     if "tema_squadra" not in st.session_state:
         st.session_state.tema_squadra = dict(TEMA_DEFAULT)
+    if "gare" not in st.session_state:
+        st.session_state.gare = []
     st.session_state.initialized = True
 
 # Guardie di sicurezza: assicurano che le chiavi esistano SEMPRE,
@@ -410,6 +415,8 @@ if "schema_settimanale" not in st.session_state:
     st.session_state.schema_settimanale = dict(SCHEMA_DEFAULT)
 if "tema_squadra" not in st.session_state:
     st.session_state.tema_squadra = dict(TEMA_DEFAULT)
+if "gare" not in st.session_state:
+    st.session_state.gare = []
 
 # Applica il TEMA della squadra: sovrascrive i colori accento del CSS base
 # con i colori scelti dall'utente (coerenti in badge, pulsanti, header, grafici).
@@ -534,6 +541,76 @@ def file_to_base64_png(uploaded):
         return base64.b64encode(raw).decode("ascii")
     except Exception:
         return ""
+
+
+def stat_presenze_atleta():
+    """Ritorna una lista di dict con nome, presenze, totali e percentuale per ogni atleta."""
+    sedute = [s for s in st.session_state.sedute if s.get("presenti_nomi") is not None]
+    tot = len(sedute)
+    righe = []
+    for g in st.session_state.rosa:
+        nome = g["Nome"]
+        pres = sum(1 for s in sedute if nome in (s.get("presenti_nomi") or []))
+        perc = round(100 * pres / tot) if tot else 0
+        righe.append({"Atleta": nome, "Presenze": pres, "Sedute": tot, "%": perc})
+    return righe, tot
+
+
+def campo_visuale_html(presenti):
+    """Disegna uno schema semplice del campo con il numero di atlete per ruolo presenti."""
+    c = conta_ruoli(presenti)
+    def _cella(label, r):
+        col = colore_ruolo(r)
+        return ("<div style='flex:1;margin:4px;padding:10px 6px;border-radius:10px;text-align:center;"
+                "background:" + col + "22;border:1px solid " + col + "66;color:#e8eefc;'>"
+                "<div style='font-size:.75rem;opacity:.8'>" + label + "</div>"
+                "<div style='font-size:1.4rem;font-weight:800;color:" + col + "'>" + str(c[r]) + "</div></div>")
+    rete = "<div style='height:6px;background:linear-gradient(90deg,#fff,#bbb);border-radius:3px;margin:6px 2px'></div>"
+    riga_avanti = "<div style='display:flex'>" + _cella("Z4 Banda", "S") + _cella("Z3 Centrale", "C") + _cella("Z2 Opposto", "O") + "</div>"
+    riga_dietro = "<div style='display:flex'>" + _cella("Z5", "S") + _cella("Libero", "L") + _cella("Z1 Palleggio", "P") + "</div>"
+    return ("<div style='max-width:420px;padding:12px;border-radius:14px;"
+            "background:rgba(20,31,58,0.5);border:1px solid var(--vc-border)'>"
+            + rete + riga_avanti + riga_dietro + "</div>")
+
+
+def seduta_html_stampabile(s):
+    """Genera un documento HTML autosufficiente e stampabile per una seduta."""
+    tema = st.session_state.get("tema_squadra", TEMA_DEFAULT)
+    c1 = tema.get("colore1", "#ff9f1c")
+    squadra = _html.escape(tema.get("nome_squadra", "VolleyCoach"))
+    tot = sum(int(e["Durata_min"]) for e in s["esercizi"])
+    righe = []
+    fase_corr = None
+    for e in s["esercizi"]:
+        if e["Fase"] != fase_corr:
+            fase_corr = e["Fase"]
+            righe.append("<h3 style='color:" + c1 + ";margin:14px 0 4px'>" + _html.escape(str(fase_corr)) + "</h3>")
+        righe.append("<div class='ex'><b>" + _html.escape(str(e["Nome"])) + "</b> "
+                     "<span class='min'>(" + str(e["Durata_min"]) + " min)</span><br>"
+                     "<span class='desc'>" + _html.escape(str(e.get("Descrizione", ""))) + "</span></div>")
+    pres = ", ".join(s.get("presenti_nomi") or []) or "\u2014"
+    ass = ", ".join(s.get("assenti_nomi") or []) or "\u2014"
+    note = _html.escape(s.get("note", "") or "")
+    note_html = ("<div class='note'><b>Note:</b> " + note + "</div>") if note else ""
+    doc = (
+        "<!DOCTYPE html><html lang='it'><head><meta charset='utf-8'>"
+        "<title>Seduta " + s["data"] + "</title><style>"
+        "body{font-family:Segoe UI,Arial,sans-serif;max-width:800px;margin:24px auto;padding:0 18px;color:#1a2233}"
+        "h1{color:" + c1 + ";margin:0 0 2px}.sub{color:#666;margin:0 0 14px}"
+        ".meta{background:" + c1 + "18;border-left:5px solid " + c1 + ";padding:10px 14px;border-radius:8px;margin-bottom:12px}"
+        ".ex{padding:6px 0;border-bottom:1px solid #eee}.min{color:" + c1 + ";font-weight:700}"
+        ".desc{color:#555;font-size:.92rem}.note{margin-top:16px;padding:10px 14px;background:#fff8e6;border-radius:8px}"
+        "@media print{body{margin:0}}</style></head><body>"
+        "<h1>" + squadra + "</h1><p class='sub'>Scheda di allenamento</p>"
+        "<div class='meta'><b>Data:</b> " + s["data"] + " &nbsp;\u00b7&nbsp; <b>Obiettivo:</b> " + _html.escape(str(s["obiettivo"])) +
+        " &nbsp;\u00b7&nbsp; <b>Intensit\u00e0:</b> " + _html.escape(str(s["intensita"])) +
+        " &nbsp;\u00b7&nbsp; <b>Durata:</b> " + str(tot) + " min<br>"
+        "<b>Presenti:</b> " + _html.escape(pres) + "<br><b>Assenti:</b> " + _html.escape(ass) + "</div>"
+        + "".join(righe) + note_html +
+        "<p style='margin-top:24px;color:#999;font-size:.8rem'>Generato con VolleyCoach Manager</p>"
+        "</body></html>"
+    )
+    return doc.encode("utf-8")
 
 
 def editor_disegno(key_prefix, valore_corrente=""):
@@ -776,7 +853,7 @@ with st.sidebar:
     _t = st.session_state.get("tema_squadra", TEMA_DEFAULT)
     if _t.get("logo"):
         st.markdown(
-            "<div style='text-align:center'><img src='" + _t["logo"] + "' class='vc-logo' style='height:72px'></div>",
+            "<div style='text-align:center'><img src='data:image/png;base64," + _t["logo"] + "' class='vc-logo' style='height:72px'></div>",
             unsafe_allow_html=True,
         )
     st.title("\U0001F3D0 " + (_t.get("nome_squadra") or "VolleyCoach"))
@@ -881,7 +958,7 @@ with st.sidebar:
 menu = st.radio(
     "",
     ["\U0001F3E0 Dashboard", "\U0001F465 Rosa", "\U0001F9E9 Periodizzazione", "\U0001F4CB Programma Allenamenti",
-     "\U0001F4DA Libreria Esercizi", "\U0001F310 Esercizi Online", "\U0001F5D3\uFE0F Calendario", "\U0001F4CA Presenze"],
+     "\U0001F4DA Libreria Esercizi", "\U0001F310 Esercizi Online", "\U0001F5D3\uFE0F Calendario", "\U0001F3C6 Gare", "\U0001F4CA Presenze"],
     horizontal=True,
     label_visibility="collapsed",
 )
@@ -892,7 +969,7 @@ st.markdown("---")
 # ============================================================
 if menu == "\U0001F3E0 Dashboard":
     _th = st.session_state.get("tema_squadra", TEMA_DEFAULT)
-    _logo_html = ("<img src='" + _th["logo"] + "' class='vc-logo'>" if _th.get("logo") else "\U0001F3D0 ")
+    _logo_html = ("<img src='data:image/png;base64," + _th["logo"] + "' class='vc-logo'>" if _th.get("logo") else "\U0001F3D0 ")
     _nome_h = _html.escape(_th.get("nome_squadra") or "VolleyCoach Manager")
     _sotto_h = _html.escape(_th.get("sottotitolo") or "Il tuo pannello di controllo per la squadra")
     st.markdown(
@@ -904,10 +981,24 @@ if menu == "\U0001F3E0 Dashboard":
         st.info("Inizia aggiungendo le tue giocatrici nella sezione **Rosa**.")
     c1, c2, c3, c4 = st.columns(4)
     disp = giocatrici_disponibili()
-    c1.metric("Giocatrici", len(st.session_state.rosa))
-    c2.metric("Disponibili", len(disp))
-    c3.metric("Indisponibili", len(st.session_state.rosa) - len(disp))
-    c4.metric("Esercizi in libreria", len(st.session_state.esercizi))
+    _th2 = st.session_state.get("tema_squadra", TEMA_DEFAULT)
+    _cc = _th2.get("colore1", "#ff9f1c")
+    _righe_pres, _tot_sed = stat_presenze_atleta()
+    _pres_media = round(sum(r["%"] for r in _righe_pres) / len(_righe_pres)) if _righe_pres else 0
+
+    def _vcard(col, icona, valore, etichetta):
+        col.markdown(
+            "<div style='background:var(--vc-card);border:1px solid var(--vc-border);border-radius:14px;"
+            "padding:14px 16px;border-left:5px solid " + _cc + "'>"
+            "<div style='font-size:1.6rem'>" + icona + "</div>"
+            "<div style='font-size:1.8rem;font-weight:800;color:" + _cc + "'>" + str(valore) + "</div>"
+            "<div style='color:var(--vc-muted);font-size:.85rem'>" + etichetta + "</div></div>",
+            unsafe_allow_html=True,
+        )
+    _vcard(c1, "\U0001F465", len(st.session_state.rosa), "Giocatrici in rosa")
+    _vcard(c2, "\U0001F7E2", len(disp), "Disponibili")
+    _vcard(c3, "\U0001F4CA", str(_pres_media) + "%", "Presenza media")
+    _vcard(c4, "\U0001F4C5", len(st.session_state.sedute), "Sedute programmate")
 
     st.markdown("### Composizione rosa per ruolo")
     conteggio = conta_ruoli(st.session_state.rosa)
@@ -929,6 +1020,50 @@ if menu == "\U0001F3E0 Dashboard":
                 )
         else:
             st.caption("Nessuna seduta futura programmata.")
+
+    # ---- Prossima gara (countdown) ----
+    if st.session_state.get("gare"):
+        _oggi = date.today()
+        _future_g = sorted(
+            [g for g in st.session_state.gare if g.get("data", "") >= _oggi.isoformat()],
+            key=lambda x: x["data"],
+        )
+        if _future_g:
+            _g = _future_g[0]
+            try:
+                _gg = (date.fromisoformat(_g["data"]) - _oggi).days
+            except Exception:
+                _gg = None
+            _quando = "oggi!" if _gg == 0 else ("domani" if _gg == 1 else ("tra " + str(_gg) + " giorni") if _gg else "")
+            st.markdown(
+                "<div class='block-seduta'>\U0001F3C6 <b>Prossima gara:</b> " + _html.escape(str(_g.get("avversario", ""))) +
+                " \u00b7 " + _g.get("data", "") + (" \u00b7 <b>" + _quando + "</b>" if _quando else "") + "</div>",
+                unsafe_allow_html=True,
+            )
+
+    # ---- Obiettivi stagionali: quante sedute per fondamentale ----
+    if st.session_state.sedute:
+        st.markdown("### \U0001F3AF Lavoro stagionale per obiettivo")
+        st.caption("Quante sedute hai dedicato finora a ciascun obiettivo (in base alle sedute salvate).")
+        _conteggi = {o: 0 for o in OBIETTIVI}
+        for _s in st.session_state.sedute:
+            for _o in str(_s.get("obiettivo", "")).split(" + "):
+                _o = _o.strip()
+                if _o in _conteggi:
+                    _conteggi[_o] += 1
+        _max = max(_conteggi.values()) or 1
+        for _o, _n in _conteggi.items():
+            if _n == 0:
+                continue
+            _perc = int(100 * _n / _max)
+            st.markdown(
+                "<div style='margin:4px 0'><span style='display:inline-block;width:200px'>" + _html.escape(_o) + "</span>"
+                "<span style='display:inline-block;width:55%;background:var(--vc-card2);border-radius:6px;vertical-align:middle'>"
+                "<span style='display:inline-block;height:14px;border-radius:6px;width:" + str(max(_perc, 4)) + "%;"
+                "background:linear-gradient(90deg,var(--vc-accent),var(--vc-accent2))'></span></span>"
+                "<b style='margin-left:8px'>" + str(_n) + "</b></div>",
+                unsafe_allow_html=True,
+            )
 
 # ============================================================
 # ROSA
@@ -965,8 +1100,11 @@ if menu == "\U0001F465 Rosa":
         st.caption("Passa il mouse su una card per girarla e vedere gli obiettivi. Usa \u201cCompila / modifica scheda\u201d per aggiornarli.")
         filtro = st.multiselect("Filtra per ruolo", list(RUOLI.keys()),
                                 format_func=lambda r: RUOLI[r])
+        cerca = st.text_input("\U0001F50E Cerca atleta", placeholder="Scrivi un nome o un numero...")
+        _q = cerca.strip().lower()
         visibili = [(i, g) for i, g in enumerate(st.session_state.rosa)
-                    if not (filtro and g["Ruolo"] not in filtro)]
+                    if not (filtro and g["Ruolo"] not in filtro)
+                    and (not _q or _q in str(g.get("Nome", "")).lower() or _q in str(g.get("Numero", "")).lower())]
         N_COL = 3
         for riga_start in range(0, len(visibili), N_COL):
             cols = st.columns(N_COL)
@@ -987,10 +1125,16 @@ if menu == "\U0001F465 Rosa":
                         back_body = f"<div class='flip-back-body'>{'<br>'.join(parti)}</div>"
                     else:
                         back_body = "<div class='flip-empty'>Nessun obiettivo inserito.<br>Aprilo qui sotto e compilalo.</div>"
+                    _foto = str(g.get("Foto", "")).strip()
+                    if _foto:
+                        _foto_html = ("<img src='data:image/png;base64," + _foto + "' style='width:72px;height:72px;"
+                                      "border-radius:50%;object-fit:cover;border:2px solid " + col_r + "'>")
+                    else:
+                        _foto_html = "<div style='font-size:1.5rem'>" + emoji + "</div>"
                     st.markdown(
                         f"<div class='flip-card'><div class='flip-inner'>"
                         f"<div class='flip-front' style=\"border:1px solid {col_r}; box-shadow:0 0 18px {col_r}55, inset 0 0 24px {col_r}18;\">"
-                        f"<div style='font-size:1.5rem'>{emoji}</div>"
+                        f"{_foto_html}"
                         f"<div class='flip-name'>#{_html.escape(str(g['Numero']))} {nome}</div>"
                         f"<div class='flip-role' style='color:{col_r}'>{ruolo_nome}</div>"
                         f"<div class='flip-meta'>{_html.escape(str(g['Altezza']))} cm \u00b7 {emoji} {_html.escape(str(g.get('Stato','')))}</div>"
@@ -1036,6 +1180,11 @@ if menu == "\U0001F465 Rosa":
                             forza = st.text_area("\U0001F4AA Punti di forza", value=g.get("Punti_forza", ""), height=70)
                             migliorare = st.text_area("\U0001F527 Aree da migliorare", value=g.get("Da_migliorare", ""), height=70)
                             lavoro = st.text_area("\U0001F3CB\uFE0F Lavoro individuale assegnato", value=g.get("Lavoro_individuale", ""), height=70)
+                            st.markdown("**\U0001F4F7 Foto**")
+                            foto_up = st.file_uploader("Carica/aggiorna foto", type=["png", "jpg", "jpeg"], key=f"foto_{i}")
+                            rimuovi_foto = False
+                            if g.get("Foto"):
+                                rimuovi_foto = st.checkbox("\U0001F5D1\uFE0F Rimuovi foto", key=f"delfoto_{i}")
                             fc1, fc2 = st.columns(2)
                             salva = fc1.form_submit_button("\U0001F4BE Salva", use_container_width=True, type="primary")
                             elimina = fc2.form_submit_button("\U0001F5D1\uFE0F Elimina", use_container_width=True)
@@ -1054,6 +1203,12 @@ if menu == "\U0001F465 Rosa":
                                     st.session_state.rosa[i]["Punti_forza"] = forza.strip()
                                     st.session_state.rosa[i]["Da_migliorare"] = migliorare.strip()
                                     st.session_state.rosa[i]["Lavoro_individuale"] = lavoro.strip()
+                                    if rimuovi_foto:
+                                        st.session_state.rosa[i]["Foto"] = ""
+                                    elif foto_up is not None:
+                                        _fb = file_to_base64_png(foto_up)
+                                        if _fb:
+                                            st.session_state.rosa[i]["Foto"] = _fb
                                     save_state()
                                     st.success("Giocatrice aggiornata!")
                                     st.rerun()
@@ -1113,6 +1268,10 @@ if menu == "\U0001F4CB Programma Allenamenti":
             avvisi.append("nessuna **centrale**")
         if avvisi:
             st.warning("Attenzione, oggi hai " + ", ".join(avvisi) + ": adatta gli esercizi di conseguenza.")
+        # schema visuale del campo con i ruoli presenti
+        if presenti:
+            st.markdown("**\U0001F3D0 Disposizione in campo (ruoli presenti)**")
+            st.markdown(campo_visuale_html(presenti), unsafe_allow_html=True)
     else:
         st.info("Aggiungi le giocatrici nella sezione **Rosa** per gestire le presenze. Puoi comunque generare una seduta indicando il numero di presenti qui sotto.")
 
@@ -1289,7 +1448,12 @@ if menu == "\U0001F4CB Programma Allenamenti":
                 es_list.sort(key=lambda x: ordine.get(x["Fase"], 99))
                 st.rerun()
 
+        _nota_seduta = st.text_area("\U0001F4DD Note (facoltative)",
+                                    value=ult.get("note", ""),
+                                    placeholder="Es. focus del giorno, com'\u00e8 andata, cosa migliorare...",
+                                    key="nota_nuova_seduta")
         if st.button("\U0001F4C5 Salva questa seduta nel calendario", type="primary"):
+            ult["note"] = _nota_seduta.strip()
             st.session_state.sedute.append(ult)
             save_state()
             st.success("Seduta salvata nel calendario!")
@@ -1486,9 +1650,11 @@ if menu == "\U0001F5D3\uFE0F Calendario":
     else:
         sedute = sorted(st.session_state.sedute, key=lambda s: s["data"])
         st.markdown("### Sedute programmate")
+        _col_int = {"Scarico": "\U0001F7E2", "Medio": "\U0001F7E1", "Pre-partita": "\U0001F7E0", "Carico": "\U0001F534"}
         for i, s in enumerate(sedute):
             tot = sum(int(e["Durata_min"]) for e in s["esercizi"])
-            with st.expander(f"\U0001F4C5 {s['data']} \u2014 {s['obiettivo']} \u00b7 {s['intensita']} \u00b7 {tot} min"):
+            _pallino = _col_int.get(s["intensita"], "\u26AA")
+            with st.expander(f"{_pallino} {s['data']} \u2014 {s['obiettivo']} \u00b7 {s['intensita']} \u00b7 {tot} min"):
                 if s.get("presenti_nomi"):
                     st.caption("\u2705 Presenti: " + ", ".join(s["presenti_nomi"]))
                 if s.get("assenti_nomi"):
@@ -1524,6 +1690,33 @@ if menu == "\U0001F5D3\uFE0F Calendario":
                     d = disegno_html(e.get("Disegno", ""))
                     if d:
                         st.markdown(d, unsafe_allow_html=True)
+
+                # --- Note post-allenamento (editabili) ---
+                _nota = st.text_area("\U0001F4DD Note post-allenamento", value=s.get("note", ""),
+                                     key=f"notacal_{i}",
+                                     placeholder="Com'\u00e8 andata, cosa migliorare la prossima volta...")
+                cbn1, cbn2, cbn3 = st.columns(3)
+                if cbn1.button("\U0001F4BE Salva note", key=f"savenote_{i}", use_container_width=True):
+                    s["note"] = _nota.strip()
+                    save_state()
+                    st.success("Note salvate!")
+                    st.rerun()
+                if cbn2.button("\U0001F4CB Duplica seduta", key=f"dup_{i}", use_container_width=True):
+                    import copy as _copy
+                    _nuova = _copy.deepcopy(s)
+                    _nuova["data"] = date.today().isoformat()
+                    st.session_state.sedute.append(_nuova)
+                    save_state()
+                    st.success("Seduta duplicata (con data di oggi)!")
+                    st.rerun()
+                cbn3.download_button(
+                    "\U0001F5A8\uFE0F Scarica/stampa",
+                    data=seduta_html_stampabile(s),
+                    file_name="seduta_" + s["data"] + ".html",
+                    mime="text/html",
+                    key=f"print_{i}",
+                    use_container_width=True,
+                )
                 if st.button("\U0001F5D1\uFE0F Elimina seduta", key=f"delsed_{i}"):
                     st.session_state.sedute.remove(s)
                     save_state()
@@ -1679,6 +1872,130 @@ if menu == "\U0001F9E9 Periodizzazione":
             st.info("Nessun microciclo. Crea le settimane di lavoro collegate a un macrociclo.")
 
 # ============================================================
+# GARE (calendario partite + convocazioni + countdown)
+# ============================================================
+if menu == "\U0001F3C6 Gare":
+    st.header("\U0001F3C6 Calendario Gare")
+    st.caption("Programma le partite, scegli le convocate e tieni d'occhio il conto alla rovescia.")
+
+    _oggi_g = date.today()
+
+    # ---- Nuova gara ----
+    with st.expander("\u2795 Aggiungi una gara", expanded=not st.session_state.gare):
+        with st.form("form_nuova_gara", clear_on_submit=True):
+            cg1, cg2 = st.columns(2)
+            with cg1:
+                g_data = st.date_input("Data", value=_oggi_g, key="g_data_new")
+                g_avv = st.text_input("Avversario", key="g_avv_new")
+                g_casa = st.radio("Dove", ["Casa", "Trasferta"], horizontal=True, key="g_casa_new")
+            with cg2:
+                g_ora = st.text_input("Ora (es. 18:30)", value="18:00", key="g_ora_new")
+                g_luogo = st.text_input("Luogo / Palestra", key="g_luogo_new")
+                g_comp = st.text_input("Competizione (es. Campionato)", key="g_comp_new")
+            _nomi_rosa = [x["Nome"] for x in st.session_state.rosa]
+            g_conv = st.multiselect("Convocate", _nomi_rosa, key="g_conv_new")
+            g_note = st.text_area("Note (strategia, assenze, ecc.)", key="g_note_new")
+            if st.form_submit_button("\U0001F4BE Salva gara"):
+                if not g_avv.strip():
+                    st.warning("Inserisci almeno il nome dell'avversario.")
+                else:
+                    st.session_state.gare.append({
+                        "data": g_data.isoformat(), "ora": g_ora.strip(),
+                        "avversario": g_avv.strip(), "casa": g_casa,
+                        "luogo": g_luogo.strip(), "competizione": g_comp.strip(),
+                        "convocate": g_conv, "note": g_note.strip(), "esito": "",
+                    })
+                    save_state()
+                    st.success("Gara aggiunta!")
+                    st.rerun()
+
+    if not st.session_state.gare:
+        st.info("Nessuna gara in calendario. Aggiungine una qui sopra.")
+    else:
+        _gare_ord = sorted(st.session_state.gare, key=lambda x: (x.get("data", ""), x.get("ora", "")))
+        _future = [g for g in _gare_ord if g.get("data", "") >= _oggi_g.isoformat()]
+
+        # ---- Countdown prossima gara + promemoria ----
+        if _future:
+            _p = _future[0]
+            try:
+                _gg = (date.fromisoformat(_p["data"]) - _oggi_g).days
+            except Exception:
+                _gg = None
+            _quando = "OGGI!" if _gg == 0 else ("DOMANI" if _gg == 1 else ("tra " + str(_gg) + " giorni") if _gg is not None else "")
+            st.markdown(
+                "<div class='block-seduta'><h3 style='margin:0'>\u23F3 Prossima gara: " + _quando + "</h3>"
+                "<b>" + _html.escape(_p.get("avversario", "")) + "</b> \u00b7 " + _p.get("data", "") +
+                (" \u00b7 " + _p.get("ora", "") if _p.get("ora") else "") +
+                " \u00b7 " + _p.get("casa", "") + (" \u00b7 " + _html.escape(_p.get("luogo", "")) if _p.get("luogo") else "") +
+                "<br>\U0001F465 Convocate: " + str(len(_p.get("convocate") or [])) + " atlete</div>",
+                unsafe_allow_html=True,
+            )
+            # Promemoria scaricabile pre-gara
+            _conv_txt = "\n".join("- " + n for n in (_p.get("convocate") or [])) or "(nessuna convocata selezionata)"
+            _promemoria = (
+                "PROMEMORIA GARA\n================\n"
+                + "Avversario: " + _p.get("avversario", "") + "\n"
+                + "Data: " + _p.get("data", "") + "  Ora: " + _p.get("ora", "") + "\n"
+                + "Dove: " + _p.get("casa", "") + "  Luogo: " + _p.get("luogo", "") + "\n"
+                + "Competizione: " + _p.get("competizione", "") + "\n\n"
+                + "CONVOCATE (" + str(len(_p.get("convocate") or [])) + "):\n" + _conv_txt + "\n\n"
+                + "NOTE:\n" + (_p.get("note", "") or "-") + "\n"
+            )
+            st.download_button("\U0001F4E5 Scarica promemoria pre-gara", data=_promemoria.encode("utf-8"),
+                               file_name="promemoria_gara_" + _p.get("data", "") + ".txt", mime="text/plain")
+
+        st.markdown("---")
+        st.markdown("### \U0001F4C5 Tutte le gare")
+        for _i, _g in enumerate(_gare_ord):
+            _passata = _g.get("data", "") < _oggi_g.isoformat()
+            _ico = "\u2705" if _passata else "\U0001F539"
+            _titolo = (_ico + " " + _g.get("data", "") + " \u00b7 " + _g.get("avversario", "") +
+                       " (" + _g.get("casa", "") + ")")
+            with st.expander(_titolo):
+                with st.form("form_gara_" + str(_i)):
+                    e1, e2 = st.columns(2)
+                    with e1:
+                        try:
+                            _dval = date.fromisoformat(_g.get("data", _oggi_g.isoformat()))
+                        except Exception:
+                            _dval = _oggi_g
+                        ed_data = st.date_input("Data", value=_dval, key="ed_data_" + str(_i))
+                        ed_avv = st.text_input("Avversario", value=_g.get("avversario", ""), key="ed_avv_" + str(_i))
+                        ed_casa = st.radio("Dove", ["Casa", "Trasferta"],
+                                           index=0 if _g.get("casa") == "Casa" else 1,
+                                           horizontal=True, key="ed_casa_" + str(_i))
+                    with e2:
+                        ed_ora = st.text_input("Ora", value=_g.get("ora", ""), key="ed_ora_" + str(_i))
+                        ed_luogo = st.text_input("Luogo", value=_g.get("luogo", ""), key="ed_luogo_" + str(_i))
+                        ed_comp = st.text_input("Competizione", value=_g.get("competizione", ""), key="ed_comp_" + str(_i))
+                    _nomi_rosa2 = [x["Nome"] for x in st.session_state.rosa]
+                    _conv_val = [n for n in (_g.get("convocate") or []) if n in _nomi_rosa2]
+                    ed_conv = st.multiselect("Convocate", _nomi_rosa2, default=_conv_val, key="ed_conv_" + str(_i))
+                    ed_esito = st.text_input("Esito (es. 3-1, Vinta)", value=_g.get("esito", ""), key="ed_esito_" + str(_i))
+                    ed_note = st.text_area("Note", value=_g.get("note", ""), key="ed_note_" + str(_i))
+                    cbt1, cbt2 = st.columns(2)
+                    with cbt1:
+                        _upd = st.form_submit_button("\U0001F4BE Aggiorna")
+                    with cbt2:
+                        _del = st.form_submit_button("\U0001F5D1\uFE0F Elimina")
+                    if _upd:
+                        _g.update({
+                            "data": ed_data.isoformat(), "ora": ed_ora.strip(),
+                            "avversario": ed_avv.strip(), "casa": ed_casa,
+                            "luogo": ed_luogo.strip(), "competizione": ed_comp.strip(),
+                            "convocate": ed_conv, "note": ed_note.strip(), "esito": ed_esito.strip(),
+                        })
+                        save_state()
+                        st.success("Gara aggiornata!")
+                        st.rerun()
+                    if _del:
+                        st.session_state.gare = [x for x in st.session_state.gare if x is not _g]
+                        save_state()
+                        st.warning("Gara eliminata.")
+                        st.rerun()
+
+# ============================================================
 # PRESENZE (mensili)
 # ============================================================
 if menu == "\U0001F4CA Presenze":
@@ -1746,3 +2063,21 @@ if menu == "\U0001F4CA Presenze":
         csv = dfp.to_csv(index=False).encode("utf-8")
         st.download_button("\u2B07\uFE0F Scarica il registro del mese (CSV)", data=csv,
                            file_name=f"presenze_{mese_sel}.csv", mime="text/csv")
+
+        # ---- Andamento sull'intera stagione (tutte le sedute) ----
+        st.markdown("---")
+        st.markdown("### \U0001F4C8 Andamento stagionale (tutte le sedute)")
+        _righe_s, _tot_s = stat_presenze_atleta()
+        if _righe_s and _tot_s:
+            _dfs = pd.DataFrame(_righe_s).sort_values("%", ascending=False)
+            st.caption("Percentuale di presenza di ogni atleta su tutte le " + str(_tot_s) + " sedute registrate.")
+            st.bar_chart(_dfs.set_index("Atleta")["%"])
+            cs1, cs2 = st.columns(2)
+            with cs1:
+                st.markdown("**\U0001F3C5 Pi\u00f9 presenti**")
+                for _r in _dfs.head(3).to_dict("records"):
+                    st.markdown("- " + _html.escape(_r["Atleta"]) + f" \u2014 {_r['%']}% ({_r['Presenze']}/{_r['Sedute']})")
+            with cs2:
+                st.markdown("**\u26A0\uFE0F Da monitorare**")
+                for _r in _dfs.tail(3).to_dict("records")[::-1]:
+                    st.markdown("- " + _html.escape(_r["Atleta"]) + f" \u2014 {_r['%']}% ({_r['Presenze']}/{_r['Sedute']})")
