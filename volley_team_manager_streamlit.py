@@ -40,6 +40,10 @@ st.set_page_config(
 SAVE_FILE = "volleycoach_state.pkl"
 BAK_FILE = "volleycoach_state.pkl.bak"
 
+# --- Multi-squadra (il Direttore Tecnico gestisce pi\u00f9 squadre della societ\u00e0) ---
+MASTER_FILE = "volleycoach_societa.pkl"
+MASTER_BAK = "volleycoach_societa.pkl.bak"
+
 # Tema grafico predefinito (colori della squadra, personalizzabili dall'app)
 TEMA_DEFAULT = {
     "nome_squadra": "VolleyCoach",
@@ -66,7 +70,28 @@ OBIETTIVI = [
 ]
 
 INTENSITA = ["Scarico", "Medio", "Carico", "Pre-partita"]
-FASI = ["Riscaldamento", "Centrale", "Situazionale", "Defaticamento"]
+
+# Struttura della seduta richiesta dal Direttore Tecnico (percentuali del tempo totale).
+# NB: la somma indicata (10+20+30+45+5 = 110) viene normalizzata automaticamente a 100.
+FASI = ["Riscaldamento", "Sintetica", "Centrale", "Globale", "Defaticamento"]
+FASI_PCT = {"Riscaldamento": 10, "Sintetica": 20, "Centrale": 30, "Globale": 45, "Defaticamento": 5}
+FASI_LABEL = {
+    "Riscaldamento": "Riscaldamento / Fisico",
+    "Sintetica": "Fase sintetica \u2013 tecnica individuale",
+    "Centrale": "Fase centrale \u2013 obiettivo della seduta",
+    "Globale": "Fase globale \u2013 gioco / 6vs6",
+    "Defaticamento": "Defaticamento",
+}
+FASI_ICONA = {
+    "Riscaldamento": "\U0001F525", "Sintetica": "\U0001F3AF", "Centrale": "\U0001F3D0",
+    "Globale": "\U0001F19A", "Defaticamento": "\U0001F9D8",
+}
+# Migrazione dalle vecchie fasi (4) alla nuova struttura (5)
+_MIGRA_FASE = {"Situazionale": "Globale"}
+
+
+def _fase_norm(f):
+    return _MIGRA_FASE.get(f, f)
 
 # Giorni della settimana (0 = lunedi)
 GIORNI_IT = ["Luned\u00ec", "Marted\u00ec", "Mercoled\u00ec", "Gioved\u00ec", "Venerd\u00ec", "Sabato", "Domenica"]
@@ -281,6 +306,17 @@ ESERCIZI_DEFAULT = [
     _ex("Scrimmage con punteggio a obiettivi", "Attacco", "Fase side-out", "Situazionale", 10, 20, "Medio", "Partita in cui alcuni fondamentali valgono doppio. Si allena l'obiettivo mantenendo la competitivit\u00e0.", "Modificare gli obiettivi a rotazioni alterne."),
 ]
 
+
+def esercizi_default_df():
+    """Costruisce il DataFrame degli esercizi di default, normalizzando le fasi
+    alla nuova struttura (es. 'Situazionale' -> 'Globale')."""
+    _df = pd.DataFrame(ESERCIZI_DEFAULT)
+    if "Fase" in _df.columns:
+        _df["Fase"] = _df["Fase"].map(lambda x: _MIGRA_FASE.get(x, x))
+    if "Disegno" not in _df.columns:
+        _df["Disegno"] = ""
+    return _df
+
 # ============================================================
 # STATO / PERSISTENZA (salvataggio atomico + backup .bak)
 # ============================================================
@@ -294,41 +330,51 @@ def _state_dict():
         "schema_settimanale": st.session_state.get("schema_settimanale", dict(SCHEMA_DEFAULT)),
         "tema_squadra": st.session_state.get("tema_squadra", dict(TEMA_DEFAULT)),
         "gare": st.session_state.get("gare", []),
-        "versione": 4,
+        "versione": 5,
     }
 
 
 def save_state():
-    """Salvataggio atomico: scrive su file temporaneo e poi sposta.
-    Mantiene una copia .bak dell'ultimo stato valido per sicurezza."""
+    """Salva lo stato della SQUADRA ATTIVA dentro il contenitore della societ\u00e0
+    (multi-squadra), con scrittura atomica e backup .bak."""
     data = _state_dict()
-    # backup del file esistente prima di sovrascrivere
-    try:
-        if os.path.exists(SAVE_FILE):
-            shutil.copy2(SAVE_FILE, BAK_FILE)
-    except Exception:
-        pass
-    tmp = tempfile.NamedTemporaryFile(delete=False, dir=".")
-    try:
-        with open(tmp.name, "wb") as f:
-            pickle.dump(data, f)
-        shutil.move(tmp.name, SAVE_FILE)
-    except Exception:
-        if os.path.exists(tmp.name):
-            os.remove(tmp.name)
-        raise
+    cont = _carica_container()
+    sid = st.session_state.get("squadra_attiva")
+    if sid not in cont["squadre"]:
+        # nessuna squadra attiva valida: creane una di default
+        sid = _nuovo_id()
+        cont["squadre"][sid] = {"nome": _nome_squadra_corrente(), "state": data}
+        cont["attiva"] = sid
+        st.session_state.squadra_attiva = sid
+    cont["squadre"][sid]["state"] = data
+    cont["squadre"][sid]["nome"] = _nome_squadra_corrente()
+    cont["attiva"] = sid
+    _scrivi_container(cont)
+
+
+def _nome_squadra_corrente():
+    _t = st.session_state.get("tema_squadra") or {}
+    return (_t.get("nome_squadra") or "Squadra").strip() or "Squadra"
 
 
 def _apply_data(data):
     st.session_state.rosa = data.get("rosa", [])
     es = data.get("esercizi", [])
-    df = pd.DataFrame(es) if es else pd.DataFrame(ESERCIZI_DEFAULT)
+    df = pd.DataFrame(es) if es else esercizi_default_df()
     # migrazione: assicura la colonna Disegno
     if "Disegno" not in df.columns:
         df["Disegno"] = ""
     df["Disegno"] = df["Disegno"].fillna("")
+    # migrazione fasi vecchie -> nuova struttura (5 fasi)
+    if "Fase" in df.columns:
+        df["Fase"] = df["Fase"].map(lambda x: _MIGRA_FASE.get(x, x))
     st.session_state.esercizi = df
-    st.session_state.sedute = data.get("sedute", [])
+    _sedute = data.get("sedute", [])
+    for _s in _sedute:
+        for _ex2 in _s.get("esercizi", []) or []:
+            if isinstance(_ex2, dict) and _ex2.get("Fase") in _MIGRA_FASE:
+                _ex2["Fase"] = _MIGRA_FASE[_ex2["Fase"]]
+    st.session_state.sedute = _sedute
     st.session_state.macrocicli = data.get("macrocicli", [])
     st.session_state.microcicli = data.get("microcicli", [])
     sch = data.get("schema_settimanale")
@@ -344,18 +390,149 @@ def _apply_data(data):
 
 
 def load_state():
-    """Carica lo stato dal file principale; se corrotto prova il backup .bak."""
+    """Carica lo stato della SQUADRA ATTIVA dal contenitore della societ\u00e0.
+    Alla prima apertura migra automaticamente l'eventuale salvataggio legacy
+    (volleycoach_state.pkl) in una squadra del contenitore."""
+    cont = _carica_container()
+    # Persisti subito il contenitore se non esiste ancora su disco
+    # (prima apertura o migrazione dal salvataggio legacy): cos\u00ec gli ID
+    # generati restano stabili per tutta la sessione.
+    if not os.path.exists(MASTER_FILE) and cont.get("squadre"):
+        try:
+            _scrivi_container(cont)
+        except Exception:
+            pass
+    sid = cont.get("attiva")
+    if sid not in cont.get("squadre", {}):
+        sid = next(iter(cont.get("squadre", {})), None)
+    if sid is None:
+        # contenitore vuoto: lo stato resta ai default
+        st.session_state.squadra_attiva = None
+        return False
+    st.session_state.squadra_attiva = sid
+    _apply_data(cont["squadre"][sid].get("state", {}))
+    return True
+
+
+# ============================================================
+# MULTI-SQUADRA (contenitore societ\u00e0)
+# ============================================================
+def _nuovo_id():
+    return "sq_" + datetime.now().strftime("%Y%m%d%H%M%S%f")
+
+
+def _container_vuoto():
+    return {"versione": 5, "attiva": None, "squadre": {}}
+
+
+def _carica_container():
+    """Carica il contenitore societ\u00e0; se corrotto prova il .bak; se assente
+    tenta la migrazione dal vecchio salvataggio singolo o crea un contenitore nuovo."""
+    for path in (MASTER_FILE, MASTER_BAK):
+        if not os.path.exists(path):
+            continue
+        try:
+            with open(path, "rb") as f:
+                cont = pickle.load(f)
+            if isinstance(cont, dict) and "squadre" in cont:
+                cont.setdefault("versione", 5)
+                cont.setdefault("attiva", next(iter(cont["squadre"]), None))
+                return cont
+        except Exception:
+            continue
+    # Migrazione dal salvataggio legacy a singola squadra, se presente
+    cont = _container_vuoto()
     for path in (SAVE_FILE, BAK_FILE):
         if not os.path.exists(path):
             continue
         try:
             with open(path, "rb") as f:
-                data = pickle.load(f)
-            _apply_data(data)
-            return True
+                legacy = pickle.load(f)
+            nome = "Prima squadra"
+            try:
+                nome = (legacy.get("tema_squadra", {}) or {}).get("nome_squadra") or nome
+            except Exception:
+                pass
+            sid = _nuovo_id()
+            cont["squadre"][sid] = {"nome": nome, "state": legacy}
+            cont["attiva"] = sid
+            break
         except Exception:
             continue
-    return False
+    return cont
+
+
+def _scrivi_container(cont):
+    """Scrittura atomica del contenitore con backup .bak dell'ultimo stato valido."""
+    try:
+        if os.path.exists(MASTER_FILE):
+            shutil.copy2(MASTER_FILE, MASTER_BAK)
+    except Exception:
+        pass
+    tmp = tempfile.NamedTemporaryFile(delete=False, dir=".")
+    try:
+        with open(tmp.name, "wb") as f:
+            pickle.dump(cont, f)
+        shutil.move(tmp.name, MASTER_FILE)
+    except Exception:
+        if os.path.exists(tmp.name):
+            os.remove(tmp.name)
+        raise
+
+
+def elenco_squadre():
+    """Lista di (id, nome) delle squadre della societ\u00e0, in ordine di nome."""
+    cont = _carica_container()
+    items = [(sid, s.get("nome", "Squadra")) for sid, s in cont.get("squadre", {}).items()]
+    items.sort(key=lambda x: x[1].lower())
+    return items
+
+
+def crea_squadra(nome):
+    """Crea una nuova squadra (vuota, con esercizi di default) e la rende attiva."""
+    cont = _carica_container()
+    sid = _nuovo_id()
+    tema = dict(TEMA_DEFAULT)
+    tema["nome_squadra"] = (nome or "Nuova squadra").strip() or "Nuova squadra"
+    nuovo_state = {
+        "rosa": [], "esercizi": esercizi_default_df().to_dict("records"), "sedute": [],
+        "macrocicli": [], "microcicli": [], "schema_settimanale": dict(SCHEMA_DEFAULT),
+        "tema_squadra": tema, "gare": [], "versione": 5,
+    }
+    cont["squadre"][sid] = {"nome": tema["nome_squadra"], "state": nuovo_state}
+    cont["attiva"] = sid
+    _scrivi_container(cont)
+    return sid
+
+
+def cambia_squadra(sid):
+    """Imposta la squadra attiva e ne carica lo stato nella sessione."""
+    cont = _carica_container()
+    if sid not in cont.get("squadre", {}):
+        return False
+    cont["attiva"] = sid
+    _scrivi_container(cont)
+    st.session_state.squadra_attiva = sid
+    _apply_data(cont["squadre"][sid].get("state", {}))
+    return True
+
+
+def elimina_squadra(sid):
+    """Elimina una squadra. Non consente di eliminare l'ultima rimasta."""
+    cont = _carica_container()
+    if sid not in cont.get("squadre", {}):
+        return False
+    if len(cont["squadre"]) <= 1:
+        return False
+    del cont["squadre"][sid]
+    if cont.get("attiva") == sid:
+        cont["attiva"] = next(iter(cont["squadre"]), None)
+    _scrivi_container(cont)
+    nuova = cont.get("attiva")
+    if nuova:
+        st.session_state.squadra_attiva = nuova
+        _apply_data(cont["squadre"][nuova].get("state", {}))
+    return True
 
 
 def export_json_bytes():
@@ -374,7 +551,7 @@ def import_json_bytes(raw):
 
 if "initialized" not in st.session_state:
     st.session_state.rosa = []
-    st.session_state.esercizi = pd.DataFrame(ESERCIZI_DEFAULT)
+    st.session_state.esercizi = esercizi_default_df()
     st.session_state.sedute = []
     st.session_state.macrocicli = []
     st.session_state.microcicli = []
@@ -396,6 +573,11 @@ if "initialized" not in st.session_state:
         st.session_state.tema_squadra = dict(TEMA_DEFAULT)
     if "gare" not in st.session_state:
         st.session_state.gare = []
+    # Multi-squadra: garantisci sempre almeno una squadra nella societ\u00e0
+    if not st.session_state.get("squadra_attiva"):
+        _sid0 = crea_squadra(st.session_state.get("tema_squadra", {}).get("nome_squadra") or "Prima squadra")
+        st.session_state.squadra_attiva = _sid0
+        save_state()
     st.session_state.initialized = True
 
 # Guardie di sicurezza: assicurano che le chiavi esistano SEMPRE,
@@ -406,7 +588,7 @@ if "rosa" not in st.session_state:
 if "sedute" not in st.session_state:
     st.session_state.sedute = []
 if "esercizi" not in st.session_state:
-    st.session_state.esercizi = pd.DataFrame(ESERCIZI_DEFAULT)
+    st.session_state.esercizi = esercizi_default_df()
 if "macrocicli" not in st.session_state:
     st.session_state.macrocicli = []
 if "microcicli" not in st.session_state:
@@ -659,15 +841,23 @@ def editor_disegno(key_prefix, valore_corrente=""):
 
 
 def _durata_fasi(durata_tot, intensita):
+    """Ripartisce i minuti sulle 5 fasi secondo la struttura del DT (FASI_PCT),
+    con una leggera modulazione in base all'intensit\u00e0. Le percentuali vengono
+    sempre normalizzate a 100."""
+    base = {f: float(FASI_PCT[f]) for f in FASI}
     if intensita == "Scarico":
-        quote = {"Riscaldamento": 0.20, "Centrale": 0.35, "Situazionale": 0.25, "Defaticamento": 0.20}
+        base["Globale"] *= 0.6
+        base["Centrale"] *= 0.8
+        base["Riscaldamento"] *= 1.3
+        base["Defaticamento"] *= 2.0
     elif intensita == "Pre-partita":
-        quote = {"Riscaldamento": 0.25, "Centrale": 0.25, "Situazionale": 0.40, "Defaticamento": 0.10}
+        base["Globale"] *= 1.2
+        base["Sintetica"] *= 0.7
     elif intensita == "Carico":
-        quote = {"Riscaldamento": 0.15, "Centrale": 0.45, "Situazionale": 0.30, "Defaticamento": 0.10}
-    else:
-        quote = {"Riscaldamento": 0.18, "Centrale": 0.42, "Situazionale": 0.30, "Defaticamento": 0.10}
-    return {fase: max(5, round(durata_tot * q)) for fase, q in quote.items()}
+        base["Globale"] *= 1.1
+        base["Centrale"] *= 1.1
+    somma = sum(base.values()) or 1
+    return {f: max(4, round(durata_tot * base[f] / somma)) for f in FASI}
 
 
 def genera_seduta(obiettivo, durata_tot, intensita, n_presenti, seed=None):
@@ -675,26 +865,7 @@ def genera_seduta(obiettivo, durata_tot, intensita, n_presenti, seed=None):
     df = st.session_state.esercizi.copy()
     df = df[df["Min_Giocatrici"] <= max(n_presenti, 1)]
     budget = _durata_fasi(durata_tot, intensita)
-    ordine_fasi = ["Riscaldamento", "Centrale", "Situazionale", "Defaticamento"]
-    seduta = []
-    for fase in ordine_fasi:
-        minuti_fase = budget[fase]
-        pool = df[df["Fase"] == fase]
-        if fase in ("Centrale", "Situazionale") and obiettivo not in ("Tecnica generale",):
-            mirati = pool[pool["Obiettivo"] == obiettivo]
-            altri = pool[pool["Obiettivo"] != obiettivo]
-            pool = pd.concat([mirati, altri])
-        candidati = pool.to_dict("records")
-        if fase in ("Riscaldamento", "Defaticamento"):
-            rng.shuffle(candidati)
-        usati = 0
-        for ex in candidati:
-            if usati >= minuti_fase and seduta and seduta[-1]["Fase"] == fase:
-                break
-            seduta.append(ex)
-            usati += int(ex["Durata_min"])
-            if usati >= minuti_fase:
-                break
+    seduta, _b = genera_seduta_multi([obiettivo], durata_tot, intensita, n_presenti, seed=seed)
     return seduta, budget
 
 
@@ -708,17 +879,17 @@ def _quote_macro(fase_macro):
       - Transizione (scarico): volumi bassi, prevalenza riscaldamento/defaticamento
     """
     fm = (fase_macro or "").lower()
-    if "generale" in fm or "prepar" in fm and "spec" not in fm:
-        return {"Riscaldamento": 1.25, "Centrale": 1.15, "Situazionale": 0.70, "Defaticamento": 1.10}
+    if "generale" in fm or ("prepar" in fm and "spec" not in fm):
+        return {"Riscaldamento": 1.30, "Sintetica": 1.20, "Centrale": 1.00, "Globale": 0.70, "Defaticamento": 1.10}
     if "specific" in fm:
-        return {"Riscaldamento": 1.00, "Centrale": 1.20, "Situazionale": 1.00, "Defaticamento": 1.00}
+        return {"Riscaldamento": 1.00, "Sintetica": 1.10, "Centrale": 1.20, "Globale": 0.95, "Defaticamento": 1.00}
     if "pre-comp" in fm or "pre comp" in fm or "precomp" in fm or "pre-camp" in fm or "pre camp" in fm or "precamp" in fm:
-        return {"Riscaldamento": 0.90, "Centrale": 0.90, "Situazionale": 1.35, "Defaticamento": 0.95}
+        return {"Riscaldamento": 0.90, "Sintetica": 0.80, "Centrale": 0.90, "Globale": 1.35, "Defaticamento": 0.95}
     if "comp" in fm or "manteni" in fm or "gara" in fm:
-        return {"Riscaldamento": 0.90, "Centrale": 0.85, "Situazionale": 1.40, "Defaticamento": 1.00}
+        return {"Riscaldamento": 0.90, "Sintetica": 0.80, "Centrale": 0.85, "Globale": 1.40, "Defaticamento": 1.00}
     if "transiz" in fm or "scarico" in fm or "recup" in fm:
-        return {"Riscaldamento": 1.30, "Centrale": 0.80, "Situazionale": 0.70, "Defaticamento": 1.40}
-    return {"Riscaldamento": 1.0, "Centrale": 1.0, "Situazionale": 1.0, "Defaticamento": 1.0}
+        return {"Riscaldamento": 1.30, "Sintetica": 1.00, "Centrale": 0.80, "Globale": 0.60, "Defaticamento": 1.50}
+    return {f: 1.0 for f in FASI}
 
 
 def genera_seduta_multi(obiettivi_list, durata_tot, intensita, n_presenti,
@@ -740,24 +911,50 @@ def genera_seduta_multi(obiettivi_list, durata_tot, intensita, n_presenti,
     budget = {f: max(5, round(durata_tot * (pesata[f] / somma))) for f in pesata}
 
     obiettivi_list = [o for o in (obiettivi_list or []) if o] or ["Tecnica generale"]
-    ordine_fasi = ["Riscaldamento", "Centrale", "Situazionale", "Defaticamento"]
+    ordine_fasi = ["Riscaldamento", "Sintetica", "Centrale", "Globale", "Defaticamento"]
     seduta = []
     gia_usati = set()
     for fase in ordine_fasi:
         minuti_fase = budget[fase]
-        pool = df[df["Fase"] == fase]
-        if fase == "Riscaldamento" and prevenzione:
-            prev = pool[pool["Obiettivo"] == "Condizione fisica"]
-            altri = pool[pool["Obiettivo"] != "Condizione fisica"]
-            pool = pd.concat([prev, altri])
-        elif fase in ("Centrale", "Situazionale"):
+        if fase == "Riscaldamento":
+            pool = df[df["Fase"] == "Riscaldamento"]
+            if prevenzione:
+                prev = pool[pool["Obiettivo"] == "Condizione fisica"]
+                altri = pool[pool["Obiettivo"] != "Condizione fisica"]
+                pool = pd.concat([prev, altri])
+        elif fase == "Sintetica":
+            # tecnica individuale: esercizi marcati "Sintetica" oppure esercizi
+            # tecnici per pochi giocatori (lavoro analitico individuale)
+            esplicite = df[df["Fase"] == "Sintetica"]
+            individuali = df[(df["Fase"] == "Centrale") & (df["Min_Giocatrici"] <= 4)]
+            pool = pd.concat([esplicite, individuali]).drop_duplicates(subset=["Nome"])
+            if pool.empty:
+                pool = df[df["Fase"] == "Centrale"]
             mirati = pool[pool["Obiettivo"].isin(obiettivi_list)]
             altri = pool[~pool["Obiettivo"].isin(obiettivi_list)]
             cand_m = mirati.to_dict("records")
             rng.shuffle(cand_m)
             pool = pd.concat([pd.DataFrame(cand_m) if cand_m else mirati, altri])
+        elif fase == "Centrale":
+            pool = df[df["Fase"] == "Centrale"]
+            mirati = pool[pool["Obiettivo"].isin(obiettivi_list)]
+            altri = pool[~pool["Obiettivo"].isin(obiettivi_list)]
+            cand_m = mirati.to_dict("records")
+            rng.shuffle(cand_m)
+            pool = pd.concat([pd.DataFrame(cand_m) if cand_m else mirati, altri])
+        elif fase == "Globale":
+            pool = df[df["Fase"] == "Globale"]
+            if pool.empty:
+                pool = df[df["Fase"].isin(["Globale", "Centrale"])]
+            mirati = pool[pool["Obiettivo"].isin(obiettivi_list)]
+            altri = pool[~pool["Obiettivo"].isin(obiettivi_list)]
+            cand_m = mirati.to_dict("records")
+            rng.shuffle(cand_m)
+            pool = pd.concat([pd.DataFrame(cand_m) if cand_m else mirati, altri])
+        else:  # Defaticamento
+            pool = df[df["Fase"] == "Defaticamento"]
         candidati = pool.to_dict("records")
-        if fase in ("Riscaldamento", "Defaticamento"):
+        if fase in ("Riscaldamento", "Sintetica", "Defaticamento"):
             rng.shuffle(candidati)
         usati = 0
         for ex in candidati:
@@ -859,6 +1056,57 @@ with st.sidebar:
     st.title("\U0001F3D0 " + (_t.get("nome_squadra") or "VolleyCoach"))
     st.caption(_t.get("sottotitolo") or "Gestione squadra")
     st.markdown("---")
+
+    # ---- SELETTORE SQUADRA (Direzione Tecnica: pi\u00f9 squadre della societ\u00e0) ----
+    st.markdown("### \U0001F3E2 Squadre della societ\u00e0")
+    _squadre = elenco_squadre()
+    _ids = [sid for sid, _ in _squadre]
+    _nomi = {sid: nome for sid, nome in _squadre}
+    _attiva = st.session_state.get("squadra_attiva")
+    _idx = _ids.index(_attiva) if _attiva in _ids else 0
+    _sel = st.selectbox(
+        "Squadra attiva", _ids, index=_idx if _ids else 0,
+        format_func=lambda s: _nomi.get(s, "Squadra"),
+        key="sel_squadra",
+        help="Seleziona la squadra da gestire. Ogni squadra ha rosa, programma, calendario e gare separati.",
+    )
+    if _sel and _sel != _attiva:
+        save_state()          # salva la squadra corrente prima di cambiare
+        cambia_squadra(_sel)
+        st.success("Passato a: " + _nomi.get(_sel, "Squadra"))
+        st.rerun()
+    st.caption("\U0001F465 " + str(len(_squadre)) + " squadra/e in gestione.")
+
+    with st.expander("\u2795 Nuova squadra"):
+        _nuovo_nome = st.text_input("Nome della nuova squadra", key="nuova_sq_nome",
+                                    placeholder="es. Under 16 Femminile")
+        if st.button("Crea squadra", use_container_width=True, key="btn_crea_sq"):
+            if (_nuovo_nome or "").strip():
+                save_state()
+                _nid = crea_squadra(_nuovo_nome.strip())
+                cambia_squadra(_nid)
+                st.success("Squadra creata: " + _nuovo_nome.strip())
+                st.rerun()
+            else:
+                st.warning("Inserisci un nome per la squadra.")
+
+    if len(_squadre) > 1:
+        with st.expander("\U0001F5D1\uFE0F Elimina squadra attiva"):
+            st.warning("Attenzione: elimina **tutti** i dati della squadra attiva "
+                       "(rosa, sedute, gare). L'operazione non \u00e8 reversibile.")
+            _conf = st.text_input("Scrivi ELIMINA per confermare", key="conf_elim_sq")
+            if st.button("Elimina definitivamente", use_container_width=True, key="btn_elim_sq"):
+                if _conf.strip().upper() == "ELIMINA":
+                    _nome_el = _nomi.get(_attiva, "Squadra")
+                    if elimina_squadra(_attiva):
+                        st.success("Squadra eliminata: " + _nome_el)
+                        st.rerun()
+                    else:
+                        st.error("Impossibile eliminare (deve restare almeno una squadra).")
+                else:
+                    st.warning("Conferma scrivendo ELIMINA.")
+    st.markdown("---")
+
     disp = len(giocatrici_disponibili())
     st.metric("Giocatrici in rosa", len(st.session_state.rosa))
     st.metric("Disponibili", disp)
@@ -1240,6 +1488,19 @@ if menu == "\U0001F4CB Programma Allenamenti":
     st.header("\U0001F4CB Programma Allenamenti")
     st.caption("Imposta l'obiettivo della seduta: il generatore compone riscaldamento, parte tecnica, situazionale e defaticamento con esercizi coerenti dalla libreria.")
 
+    with st.expander("\u2139\uFE0F Come \u00e8 strutturata la seduta (5 fasi)"):
+        st.markdown(
+            "Ogni seduta segue la **struttura in 5 fasi** richiesta dalla Direzione Tecnica:\n\n"
+            "- \U0001F525 **Riscaldamento / Fisico** \u2014 10%\n"
+            "- \U0001F3AF **Fase sintetica** (tecnica individuale) \u2014 20%\n"
+            "- \U0001F3D0 **Fase centrale** (obiettivo della seduta) \u2014 30%\n"
+            "- \U0001F19A **Fase globale** (gioco / 6vs6) \u2014 45%\n"
+            "- \U0001F9D8 **Defaticamento** \u2014 5%\n\n"
+            "\U0001F4A1 La somma di queste percentuali \u00e8 **110%**: il programma le **normalizza automaticamente a 100%** "
+            "ridistribuendo i minuti sulla durata reale della seduta. Intensit\u00e0 e fase del macrociclo possono "
+            "modulare leggermente il peso di ogni fase."
+        )
+
     # ---- Presenze: chi c'e' e chi e' assente ----
     st.markdown("### \U0001F9CD\u200D\u2640\uFE0F Partecipanti alla seduta")
     presenti = []
@@ -1399,11 +1660,11 @@ if menu == "\U0001F4CB Programma Allenamenti":
         es_list = ult["esercizi"]
         tutti_nomi = list(st.session_state.esercizi["Nome"])
         fase_corrente = None
-        icone = {"Riscaldamento": "\U0001F525", "Centrale": "\U0001F3D0", "Situazionale": "\U0001F19A", "Defaticamento": "\U0001F9D8"}
+        icone = FASI_ICONA
         for i, e in enumerate(es_list):
             if e["Fase"] != fase_corrente:
                 fase_corrente = e["Fase"]
-                st.markdown(f"#### {icone.get(fase_corrente,'')} {fase_corrente}")
+                st.markdown(f"#### {icone.get(fase_corrente,'')} {FASI_LABEL.get(fase_corrente, fase_corrente)}")
             dis = disegno_html(e.get("Disegno", ""))
             st.markdown(
                 f"<div class='block-seduta'><b>{i+1}. {_html.escape(str(e['Nome']))}</b> "
@@ -1716,7 +1977,7 @@ if menu == "\U0001F5D3\uFE0F Calendario":
                 for e in s["esercizi"]:
                     if e["Fase"] != fase_corrente:
                         fase_corrente = e["Fase"]
-                        st.markdown(f"**{fase_corrente}**")
+                        st.markdown(f"**{FASI_ICONA.get(fase_corrente,'')} {FASI_LABEL.get(fase_corrente, fase_corrente)}**")
                     st.markdown(f"- {e['Nome']} ({e['Durata_min']} min) \u2014 _{e['Descrizione']}_")
                     d = disegno_html(e.get("Disegno", ""))
                     if d:
@@ -1976,6 +2237,7 @@ if menu == "\U0001F3C6 Gare":
                 g_comp = st.text_input("Competizione (es. Campionato)", key="g_comp_new")
             _nomi_rosa = [x["Nome"] for x in st.session_state.rosa]
             g_conv = st.multiselect("Convocate", _nomi_rosa, key="g_conv_new")
+            g_ris = st.selectbox("Risultato", ["Da giocare", "Vinta", "Persa"], key="g_ris_new")
             g_note = st.text_area("Note (strategia, assenze, ecc.)", key="g_note_new")
             if st.form_submit_button("\U0001F4BE Salva gara"):
                 if not g_avv.strip():
@@ -1986,6 +2248,7 @@ if menu == "\U0001F3C6 Gare":
                         "avversario": g_avv.strip(), "casa": g_casa,
                         "luogo": g_luogo.strip(), "competizione": g_comp.strip(),
                         "convocate": g_conv, "note": g_note.strip(), "esito": "",
+                        "risultato": g_ris,
                     })
                     save_state()
                     st.success("Gara aggiunta!")
@@ -2028,12 +2291,27 @@ if menu == "\U0001F3C6 Gare":
                                file_name="promemoria_gara_" + _p.get("data", "") + ".txt", mime="text/plain")
 
         st.markdown("---")
+        # ---- Bilancio gare (vinte / perse) ----
+        _vinte = sum(1 for g in _gare_ord if g.get("risultato") == "Vinta")
+        _perse = sum(1 for g in _gare_ord if g.get("risultato") == "Persa")
+        _giocate = _vinte + _perse
+        if _giocate:
+            _perc_v = round(100 * _vinte / _giocate)
+            st.markdown("### \U0001F4CA Bilancio stagionale")
+            bg1, bg2, bg3, bg4 = st.columns(4)
+            bg1.metric("Giocate", _giocate)
+            bg2.metric("Vinte", _vinte)
+            bg3.metric("Perse", _perse)
+            bg4.metric("% Vittorie", f"{_perc_v}%")
+
         st.markdown("### \U0001F4C5 Tutte le gare")
         for _i, _g in enumerate(_gare_ord):
             _passata = _g.get("data", "") < _oggi_g.isoformat()
-            _ico = "\u2705" if _passata else "\U0001F539"
+            _ris = _g.get("risultato", "")
+            _ico = {"Vinta": "\U0001F3C6", "Persa": "\u274C"}.get(_ris, "\u2705" if _passata else "\U0001F539")
+            _ris_txt = (" \u00b7 " + _ris + (" " + _g["esito"] if _g.get("esito") else "")) if _ris in ("Vinta", "Persa") else ""
             _titolo = (_ico + " " + _g.get("data", "") + " \u00b7 " + _g.get("avversario", "") +
-                       " (" + _g.get("casa", "") + ")")
+                       " (" + _g.get("casa", "") + ")" + _ris_txt)
             with st.expander(_titolo):
                 with st.form("form_gara_" + str(_i)):
                     e1, e2 = st.columns(2)
@@ -2054,7 +2332,12 @@ if menu == "\U0001F3C6 Gare":
                     _nomi_rosa2 = [x["Nome"] for x in st.session_state.rosa]
                     _conv_val = [n for n in (_g.get("convocate") or []) if n in _nomi_rosa2]
                     ed_conv = st.multiselect("Convocate", _nomi_rosa2, default=_conv_val, key="ed_conv_" + str(_i))
-                    ed_esito = st.text_input("Esito (es. 3-1, Vinta)", value=_g.get("esito", ""), key="ed_esito_" + str(_i))
+                    ed_esito = st.text_input("Esito (es. 3-1, 1-3)", value=_g.get("esito", ""), key="ed_esito_" + str(_i))
+                    _ris_opt = ["Da giocare", "Vinta", "Persa"]
+                    _ris_cur = _g.get("risultato", "Da giocare")
+                    ed_ris = st.selectbox("Risultato", _ris_opt,
+                                          index=_ris_opt.index(_ris_cur) if _ris_cur in _ris_opt else 0,
+                                          key="ed_ris_" + str(_i))
                     ed_note = st.text_area("Note", value=_g.get("note", ""), key="ed_note_" + str(_i))
                     cbt1, cbt2 = st.columns(2)
                     with cbt1:
@@ -2067,6 +2350,7 @@ if menu == "\U0001F3C6 Gare":
                             "avversario": ed_avv.strip(), "casa": ed_casa,
                             "luogo": ed_luogo.strip(), "competizione": ed_comp.strip(),
                             "convocate": ed_conv, "note": ed_note.strip(), "esito": ed_esito.strip(),
+                            "risultato": ed_ris,
                         })
                         save_state()
                         st.success("Gara aggiornata!")
