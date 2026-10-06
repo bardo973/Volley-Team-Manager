@@ -118,15 +118,26 @@ st.markdown("""
         --vc-bg1:#0a1120; --vc-bg2:#0f1c38; --vc-card:#141f3a; --vc-card2:#16223d;
         --vc-border:#26334f; --vc-accent:#ff9f1c; --vc-accent2:#ffbf69;
         --vc-text:#e8eefc; --vc-muted:#9fb3d1;
+        --vc-radius:16px; --vc-shadow:0 10px 30px rgba(0,0,0,0.35);
+        --vc-glass:rgba(20,31,58,0.55);
+    }
+    @keyframes vcFadeUp { from { opacity:0; transform: translateY(10px); } to { opacity:1; transform:none; } }
+    @keyframes vcShimmer { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+    * { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+    html, body, [class*="css"] {
+        font-family: 'Inter', 'Segoe UI', 'Trebuchet MS', system-ui, -apple-system, sans-serif;
     }
     .stApp {
         background:
-            radial-gradient(1200px 600px at 15% -10%, rgba(255,159,28,0.10), transparent 60%),
-            radial-gradient(1000px 500px at 110% 0%, rgba(45,110,255,0.12), transparent 55%),
+            radial-gradient(1200px 600px at 15% -10%, rgba(255,159,28,0.12), transparent 60%),
+            radial-gradient(1000px 500px at 110% 0%, rgba(45,110,255,0.14), transparent 55%),
+            radial-gradient(900px 500px at 50% 120%, rgba(181,23,158,0.10), transparent 60%),
             linear-gradient(180deg, var(--vc-bg1) 0%, var(--vc-bg2) 100%);
+        background-attachment: fixed;
         color: var(--vc-text);
     }
-    .block-container { padding-top: 3.2rem; }
+    .main .block-container > div { animation: vcFadeUp .4s ease both; }
+    .block-container { padding-top: 3.4rem; max-width: 1280px; }
     header[data-testid="stHeader"] { background: transparent; }
     section[data-testid="stSidebar"] {
         background: linear-gradient(180deg,#0b1526 0%, #0a1120 100%) !important;
@@ -134,48 +145,74 @@ st.markdown("""
     }
     h1, h2, h3 {
         color: var(--vc-accent) !important;
-        font-family: 'Segoe UI', 'Trebuchet MS', sans-serif;
-        letter-spacing: .3px;
+        font-family: 'Inter', 'Segoe UI', 'Trebuchet MS', sans-serif;
+        font-weight: 800;
+        letter-spacing: .2px;
     }
-    h2 { border-bottom: 2px solid rgba(255,159,28,0.25); padding-bottom: .35rem; }
+    h2 {
+        border-bottom: 2px solid rgba(255,159,28,0.25); padding-bottom: .35rem;
+        display: inline-block; position: relative;
+    }
+    h2::after {
+        content:''; position:absolute; left:0; bottom:-2px; height:2px; width:48px;
+        background: linear-gradient(90deg, var(--vc-accent), var(--vc-accent2));
+        border-radius:2px;
+    }
     .stButton>button {
-        border-radius: 10px; font-weight: 700; border: none;
+        border-radius: 12px; font-weight: 700; border: none; padding:.5rem 1.1rem;
         background: linear-gradient(90deg, var(--vc-accent), var(--vc-accent2)); color: #1a1000;
-        transition: all .18s ease;
+        box-shadow: 0 4px 14px rgba(255,159,28,0.25);
+        transition: transform .18s ease, box-shadow .18s ease, filter .18s ease;
     }
-    .stButton>button:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(255,159,28,0.45); }
+    .stButton>button:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(255,159,28,0.5); filter: brightness(1.05); }
     .stButton>button:active { transform: translateY(0); }
-    div[role="radiogroup"] { flex-wrap: wrap; row-gap:.45rem; }
-    div[role="radiogroup"][aria-label=""] { gap:.4rem; }
+    /* ---- Menu di navigazione a pillole ---- */
+    div[role="radiogroup"] { flex-wrap: wrap; row-gap:.5rem; }
+    div[role="radiogroup"][aria-label=""] { gap:.45rem; }
     div[data-testid="stHorizontalBlock"] { align-items: stretch; }
     div[role="radiogroup"] label {
         background: var(--vc-card); border:1px solid var(--vc-border);
-        border-radius: 999px; padding: .35rem .9rem; margin: 0 .15rem;
-        transition: all .15s ease;
+        border-radius: 999px; padding: .4rem 1rem; margin: 0 .15rem;
+        transition: all .18s ease;
     }
-    div[role="radiogroup"] label:hover { border-color: var(--vc-accent); }
+    div[role="radiogroup"] label:hover { border-color: var(--vc-accent); transform: translateY(-1px); }
+    div[role="radiogroup"] label:has(input:checked) {
+        background: linear-gradient(90deg, var(--vc-accent), var(--vc-accent2));
+        border-color: transparent;
+        box-shadow: 0 6px 16px rgba(255,159,28,0.4);
+    }
+    div[role="radiogroup"] label:has(input:checked) div { color:#1a1000 !important; font-weight:800; }
+    div[role="radiogroup"] label:has(input:checked) [data-testid="stMarkdownContainer"] p { color:#1a1000 !important; }
+    div[role="radiogroup"] label > div:first-child { display:none; }
     div[data-testid="stMetric"] {
         background: linear-gradient(180deg, var(--vc-card) 0%, var(--vc-card2) 100%);
-        border: 1px solid var(--vc-border); border-radius: 14px;
-        padding: 14px 16px; box-shadow: 0 4px 14px rgba(0,0,0,0.25);
+        border: 1px solid var(--vc-border); border-radius: var(--vc-radius);
+        padding: 16px 18px; box-shadow: var(--vc-shadow);
+        position: relative; overflow: hidden;
+        transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
     }
-    div[data-testid="stMetricValue"] { font-size: 1.8rem !important; font-weight: 800 !important; color: var(--vc-accent) !important; }
+    div[data-testid="stMetric"]::before {
+        content:''; position:absolute; top:0; left:0; width:100%; height:3px;
+        background: linear-gradient(90deg, var(--vc-accent), var(--vc-accent2));
+    }
+    div[data-testid="stMetric"]:hover { transform: translateY(-3px); box-shadow: 0 14px 34px rgba(0,0,0,0.45); border-color: var(--vc-accent); }
+    div[data-testid="stMetricValue"] { font-size: 1.9rem !important; font-weight: 800 !important; color: var(--vc-accent) !important; }
     div[data-testid="stMetricLabel"] { color: var(--vc-muted) !important; }
     .block-seduta {
         background: linear-gradient(90deg, var(--vc-card2), rgba(22,34,61,0.6));
-        border-radius: 12px; padding: 14px 16px; margin-bottom: 10px;
+        border-radius: 14px; padding: 14px 18px; margin-bottom: 10px;
         border-left: 4px solid var(--vc-accent);
-        box-shadow: 0 3px 10px rgba(0,0,0,0.2); transition: transform .15s ease;
+        box-shadow: 0 3px 12px rgba(0,0,0,0.22); transition: transform .18s ease, box-shadow .18s ease;
     }
-    .block-seduta:hover { transform: translateX(3px); }
+    .block-seduta:hover { transform: translateX(4px); box-shadow: 0 6px 18px rgba(0,0,0,0.32); }
     .ex-card {
-        background: var(--vc-card); border-radius: 12px; padding: 14px 16px;
+        background: var(--vc-card); border-radius: 14px; padding: 15px 18px;
         margin-bottom: 10px; border: 1px solid var(--vc-border);
-        box-shadow: 0 3px 10px rgba(0,0,0,0.18); transition: all .15s ease;
+        box-shadow: 0 3px 12px rgba(0,0,0,0.18); transition: all .18s ease;
     }
-    .ex-card:hover { border-color: var(--vc-accent); box-shadow: 0 6px 18px rgba(0,0,0,0.3); }
+    .ex-card:hover { border-color: var(--vc-accent); box-shadow: 0 10px 26px rgba(0,0,0,0.35); transform: translateY(-2px); }
     .ex-disegno { max-width:100%; border-radius:10px; border:1px solid var(--vc-border); margin-top:8px; background:#fff; }
-    .flip-card { background:transparent; perspective:1200px; height:200px; margin-bottom:6px; }
+    .flip-card { background:transparent; perspective:1200px; height:210px; margin-bottom:6px; }
     .flip-inner {
         position:relative; width:100%; height:100%;
         transition: transform .65s cubic-bezier(.4,.2,.2,1);
@@ -209,20 +246,47 @@ st.markdown("""
     .badge-avanzato { background:rgba(231,76,60,0.18); color:#ff8f80; border:1px solid rgba(231,76,60,0.4); }
     .role-chip { display:inline-block; padding:.2rem .6rem; border-radius:999px; font-size:.78rem; font-weight:700; margin:.15rem; }
     .vc-hero {
-        background: linear-gradient(120deg, rgba(255,159,28,0.16), rgba(45,110,255,0.14));
-        border: 1px solid var(--vc-border); border-radius: 18px;
-        padding: 20px 26px; margin-bottom: 16px;
-        box-shadow: 0 6px 22px rgba(0,0,0,0.28);
+        background: linear-gradient(120deg, rgba(255,159,28,0.16), rgba(45,110,255,0.14), rgba(181,23,158,0.12));
+        background-size: 200% 200%; animation: vcShimmer 14s ease infinite;
+        border: 1px solid var(--vc-border); border-radius: 22px;
+        padding: 24px 30px; margin-bottom: 18px;
+        box-shadow: var(--vc-shadow); position: relative; overflow: hidden;
     }
-    .vc-hero h1 { margin:0; font-size:1.9rem; }
-    .vc-hero p { margin:.3rem 0 0; color: var(--vc-muted); font-size:.95rem; }
-    button[data-baseweb="tab"] { font-weight:600; }
+    .vc-hero::after {
+        content:''; position:absolute; right:-40px; top:-40px; width:180px; height:180px;
+        background: radial-gradient(circle, rgba(255,159,28,0.25), transparent 70%);
+        border-radius:50%;
+    }
+    .vc-hero h1 { margin:0; font-size:2.05rem; }
+    .vc-hero p { margin:.4rem 0 0; color: var(--vc-muted); font-size:.98rem; }
+    .vc-stat {
+        background: linear-gradient(180deg, var(--vc-card) 0%, var(--vc-card2) 100%);
+        border:1px solid var(--vc-border); border-radius: var(--vc-radius);
+        padding:16px 18px; box-shadow: var(--vc-shadow);
+        transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+    }
+    .vc-stat:hover { transform: translateY(-3px); box-shadow:0 14px 34px rgba(0,0,0,0.45); border-color: var(--vc-accent); }
+    .vc-stat .vc-stat-icon { font-size:1.7rem; }
+    .vc-stat .vc-stat-val { font-size:1.95rem; font-weight:800; line-height:1.1; }
+    .vc-stat .vc-stat-lbl { color:var(--vc-muted); font-size:.85rem; }
+    button[data-baseweb="tab"] { font-weight:700; }
+    div[data-baseweb="tab-list"] { gap:.3rem; border-bottom:1px solid var(--vc-border); }
+    button[data-baseweb="tab"][aria-selected="true"] { color: var(--vc-accent) !important; }
+    div[data-baseweb="tab-highlight"] { background: linear-gradient(90deg, var(--vc-accent), var(--vc-accent2)) !important; height:3px !important; border-radius:3px; }
     div[data-testid="stExpander"] {
-        border:1px solid var(--vc-border); border-radius:12px; background:rgba(20,31,58,0.5);
+        border:1px solid var(--vc-border); border-radius:14px; background: var(--vc-glass);
+        backdrop-filter: blur(6px); transition: border-color .18s ease, box-shadow .18s ease;
     }
+    div[data-testid="stExpander"]:hover { border-color: var(--vc-accent); box-shadow: 0 6px 20px rgba(0,0,0,0.25); }
     .stTextInput input, .stNumberInput input, .stTextArea textarea, div[data-baseweb="select"]>div {
         border-radius: 10px !important;
     }
+    .stTextInput input:focus, .stNumberInput input:focus, .stTextArea textarea:focus {
+        border-color: var(--vc-accent) !important; box-shadow: 0 0 0 2px rgba(255,159,28,0.25) !important;
+    }
+    .stProgress > div > div > div > div { background: linear-gradient(90deg, var(--vc-accent), var(--vc-accent2)) !important; }
+    section[data-testid="stSidebar"] .stMetric { padding:10px 12px; }
+    section[data-testid="stSidebar"] h1 { font-size:1.35rem; }
     hr { border-color: var(--vc-border); }
     ::-webkit-scrollbar { width: 10px; height: 10px; }
     ::-webkit-scrollbar-thumb { background: #2a3a5c; border-radius: 8px; }
@@ -1236,11 +1300,10 @@ if menu == "\U0001F3E0 Dashboard":
 
     def _vcard(col, icona, valore, etichetta):
         col.markdown(
-            "<div style='background:var(--vc-card);border:1px solid var(--vc-border);border-radius:14px;"
-            "padding:14px 16px;border-left:5px solid " + _cc + "'>"
-            "<div style='font-size:1.6rem'>" + icona + "</div>"
-            "<div style='font-size:1.8rem;font-weight:800;color:" + _cc + "'>" + str(valore) + "</div>"
-            "<div style='color:var(--vc-muted);font-size:.85rem'>" + etichetta + "</div></div>",
+            "<div class='vc-stat' style='border-left:5px solid " + _cc + "'>"
+            "<div class='vc-stat-icon'>" + icona + "</div>"
+            "<div class='vc-stat-val' style='color:" + _cc + "'>" + str(valore) + "</div>"
+            "<div class='vc-stat-lbl'>" + etichetta + "</div></div>",
             unsafe_allow_html=True,
         )
     _vcard(c1, "\U0001F465", len(st.session_state.rosa), "Giocatrici in rosa")
