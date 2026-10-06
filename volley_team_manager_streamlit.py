@@ -12,7 +12,7 @@ import urllib.request
 import urllib.parse
 import re
 import html as _html
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, time as dtime
 
 # Librerie opzionali (il programma funziona anche senza)
 try:
@@ -212,6 +212,34 @@ st.markdown("""
     }
     .ex-card:hover { border-color: var(--vc-accent); box-shadow: 0 10px 26px rgba(0,0,0,0.35); transform: translateY(-2px); }
     .ex-disegno { max-width:100%; border-radius:10px; border:1px solid var(--vc-border); margin-top:8px; background:#fff; }
+    /* ---- Card esercizio in timeline (programma allenamenti) ---- */
+    .vc-ex {
+        background: linear-gradient(145deg, var(--vc-card), var(--vc-card2));
+        border:1px solid var(--vc-border); border-left:5px solid var(--vc-accent);
+        border-radius:16px; padding:16px 18px; margin-bottom:12px;
+        box-shadow:0 4px 16px rgba(0,0,0,0.22);
+        transition: transform .18s ease, box-shadow .18s ease;
+    }
+    .vc-ex:hover { transform: translateY(-2px); box-shadow:0 10px 26px rgba(0,0,0,0.35); }
+    .vc-ex-head { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-bottom:4px; }
+    .vc-ex-time { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+    .vc-ex-clock { font-weight:800; color:var(--vc-accent); font-size:1.02rem; letter-spacing:.3px; }
+    .vc-ex-dur { background:linear-gradient(90deg,var(--vc-accent),var(--vc-accent2)); color:#1a1000; font-weight:800; font-size:.78rem; padding:.2rem .6rem; border-radius:999px; }
+    .vc-ex-title { font-size:1.12rem; font-weight:800; color:#ffffff; margin:4px 0 6px; }
+    .vc-ex-theme { font-size:.9rem; color:var(--vc-muted); margin-bottom:8px; }
+    .vc-chip-fond { display:inline-block; background:rgba(255,159,28,0.18); color:var(--vc-accent2); border:1px solid rgba(255,159,28,0.4); border-radius:999px; padding:.12rem .6rem; font-size:.78rem; font-weight:700; margin-left:6px; }
+    .vc-chip-obj { display:inline-block; background:rgba(45,110,255,0.18); color:#8fb6ff; border:1px solid rgba(45,110,255,0.4); border-radius:999px; padding:.12rem .6rem; font-size:.78rem; font-weight:700; margin-left:6px; }
+    .vc-ex-desc { color:#d4e0f2; font-size:.92rem; line-height:1.45; margin-bottom:6px; }
+    .vc-ex-var { color:#8aa0bf; font-size:.84rem; margin-bottom:8px; }
+    .vc-ex-court { margin-top:8px; }
+    .vc-ex-court img { max-width:100%; border-radius:12px; border:1px solid var(--vc-border); background:#fff; display:block; }
+    .vc-ex-court-empty { color:#7f93b0; font-size:.82rem; font-style:italic; padding:12px 14px; border:1px dashed var(--vc-border); border-radius:12px; text-align:center; background:rgba(20,31,58,0.4); }
+    /* ---- Intestazione gruppo ruolo (Rosa) ---- */
+    .vc-role-head {
+        display:flex; align-items:center; gap:10px; margin:20px 0 12px; padding:10px 16px;
+        border-radius:14px; font-weight:800; font-size:1.08rem; letter-spacing:.3px;
+    }
+    .vc-role-count { margin-left:auto; font-size:.82rem; font-weight:800; padding:.15rem .7rem; border-radius:999px; }
     .flip-card { background:transparent; perspective:1200px; height:210px; margin-bottom:6px; }
     .flip-inner {
         position:relative; width:100%; height:100%;
@@ -819,20 +847,68 @@ def campo_visuale_html(presenti):
             + rete + riga_avanti + riga_dietro + "</div>")
 
 
+def render_ex_card(idx, e, ora_in, ora_fin):
+    """Card 'timeline' di un esercizio: ora inizio -> ora fine, durata, tema
+    principale (fondamentale + obiettivo), descrizione e campo/schema."""
+    dur = int(e.get("Durata_min", 0) or 0)
+    nome = _html.escape(str(e.get("Nome", "")))
+    fond = _html.escape(str(e.get("Fondamentale", "")))
+    obj = _html.escape(str(e.get("Obiettivo", "")))
+    desc = _html.escape(str(e.get("Descrizione", ""))).replace("\n", "<br>")
+    var = _html.escape(str(e.get("Varianti", "")))
+    liv = badge_livello(e.get("Livello", ""))
+    dis = e.get("Disegno", "")
+    if isinstance(dis, str) and dis.strip():
+        court = "<div class='vc-ex-court'><img src='data:image/png;base64," + dis + "'/></div>"
+    else:
+        court = ("<div class='vc-ex-court vc-ex-court-empty'>\U0001F3D0 Nessuno schema disegnato "
+                 "\u2014 apri \u201cCorreggi l'esercizio\u201d qui sotto per disegnare il campo</div>")
+    tema = "<span class='vc-chip-fond'>" + fond + "</span>"
+    if obj:
+        tema += "<span class='vc-chip-obj'>" + obj + "</span>"
+    var_html = ("<div class='vc-ex-var'>\U0001F501 Variante: " + var + "</div>") if var else ""
+    return (
+        "<div class='vc-ex'>"
+        "<div class='vc-ex-head'>"
+        "<div class='vc-ex-time'>"
+        "<span class='vc-ex-clock'>\U0001F552 " + ora_in + " \u2192 " + ora_fin + "</span>"
+        "<span class='vc-ex-dur'>" + str(dur) + " min</span>"
+        "</div>" + liv + "</div>"
+        "<div class='vc-ex-title'>" + str(idx + 1) + ". " + nome + "</div>"
+        "<div class='vc-ex-theme'>\U0001F3AF Tema principale: " + tema + "</div>"
+        "<div class='vc-ex-desc'>" + desc + "</div>" + var_html + court + "</div>"
+    )
+
+
 def seduta_html_stampabile(s):
     """Genera un documento HTML autosufficiente e stampabile per una seduta."""
     tema = st.session_state.get("tema_squadra", TEMA_DEFAULT)
     c1 = tema.get("colore1", "#ff9f1c")
     squadra = _html.escape(tema.get("nome_squadra", "VolleyCoach"))
     tot = sum(int(e["Durata_min"]) for e in s["esercizi"])
+    try:
+        _hh, _mm = str(s.get("ora_inizio", "18:00")).split(":")
+        _bdt = datetime.combine(date.today(), dtime(int(_hh), int(_mm)))
+    except Exception:
+        _bdt = datetime.combine(date.today(), dtime(18, 0))
+    _off = 0
     righe = []
     fase_corr = None
     for e in s["esercizi"]:
         if e["Fase"] != fase_corr:
             fase_corr = e["Fase"]
             righe.append("<h3 style='color:" + c1 + ";margin:14px 0 4px'>" + _html.escape(str(fase_corr)) + "</h3>")
-        righe.append("<div class='ex'><b>" + _html.escape(str(e["Nome"])) + "</b> "
+        _d = int(e.get("Durata_min", 0) or 0)
+        _oi = (_bdt + timedelta(minutes=_off)).strftime("%H:%M")
+        _of = (_bdt + timedelta(minutes=_off + _d)).strftime("%H:%M")
+        _off += _d
+        _tema = _html.escape(str(e.get("Fondamentale", "")))
+        _obj = _html.escape(str(e.get("Obiettivo", "")))
+        _tema_full = _tema + ((" \u00b7 " + _obj) if _obj else "")
+        righe.append("<div class='ex'><span class='time'>" + _oi + " \u2192 " + _of + "</span> "
+                     "<b>" + _html.escape(str(e["Nome"])) + "</b> "
                      "<span class='min'>(" + str(e["Durata_min"]) + " min)</span><br>"
+                     "<span class='tema'>\U0001F3AF " + _tema_full + "</span><br>"
                      "<span class='desc'>" + _html.escape(str(e.get("Descrizione", ""))) + "</span></div>")
     pres = ", ".join(s.get("presenti_nomi") or []) or "\u2014"
     ass = ", ".join(s.get("assenti_nomi") or []) or "\u2014"
@@ -845,6 +921,8 @@ def seduta_html_stampabile(s):
         "h1{color:" + c1 + ";margin:0 0 2px}.sub{color:#666;margin:0 0 14px}"
         ".meta{background:" + c1 + "18;border-left:5px solid " + c1 + ";padding:10px 14px;border-radius:8px;margin-bottom:12px}"
         ".ex{padding:6px 0;border-bottom:1px solid #eee}.min{color:" + c1 + ";font-weight:700}"
+        ".time{display:inline-block;background:" + c1 + "22;color:" + c1 + ";font-weight:800;padding:1px 8px;border-radius:999px;font-size:.82rem;margin-right:6px}"
+        ".tema{color:" + c1 + ";font-size:.82rem;font-weight:600}"
         ".desc{color:#555;font-size:.92rem}.note{margin-top:16px;padding:10px 14px;background:#fff8e6;border-radius:8px}"
         "@media print{body{margin:0}}</style></head><body>"
         "<h1>" + squadra + "</h1><p class='sub'>Scheda di allenamento</p>"
@@ -1431,9 +1509,31 @@ if menu == "\U0001F465 Rosa":
                     if not (filtro and g["Ruolo"] not in filtro)
                     and (not _q or _q in str(g.get("Nome", "")).lower() or _q in str(g.get("Numero", "")).lower())]
         N_COL = 3
-        for riga_start in range(0, len(visibili), N_COL):
+        _ruoli_ord = list(RUOLI.keys())
+        visibili.sort(key=lambda ig: (
+            _ruoli_ord.index(ig[1].get("Ruolo")) if ig[1].get("Ruolo") in _ruoli_ord else 99,
+            ig[1].get("Numero", 0),
+        ))
+        # Raggruppa le card sotto l'intestazione del rispettivo ruolo.
+        _rows = []  # ogni elemento: (intestazione_html_o_None, [ (i,g), ... ])
+        _ri = 0
+        while _ri < len(visibili):
+            _r_cur = visibili[_ri][1].get("Ruolo")
+            _grp = []
+            while _ri < len(visibili) and visibili[_ri][1].get("Ruolo") == _r_cur:
+                _grp.append(visibili[_ri])
+                _ri += 1
+            _cr = colore_ruolo(_r_cur)
+            _hdr = ("<div class='vc-role-head' style='background:" + _cr + "1f;border:1px solid " + _cr + "66;color:" + _cr + "'>"
+                    "<span>" + _html.escape(RUOLI.get(_r_cur, str(_r_cur))) + "</span>"
+                    "<span class='vc-role-count' style='background:" + _cr + "33;color:" + _cr + "'>" + str(len(_grp)) + "</span></div>")
+            for _rs in range(0, len(_grp), N_COL):
+                _rows.append((_hdr if _rs == 0 else None, _grp[_rs:_rs + N_COL]))
+        for _hdr, _chunk in _rows:
+            if _hdr:
+                st.markdown(_hdr, unsafe_allow_html=True)
             cols = st.columns(N_COL)
-            for col, (i, g) in zip(cols, visibili[riga_start:riga_start + N_COL]):
+            for col, (i, g) in zip(cols, _chunk):
                 with col:
                     emoji = {"Disponibile": "\U0001F7E2", "Infortunata": "\U0001F534", "In recupero": "\U0001F7E1", "Indisponibile": "\u26AA"}.get(g.get("Stato"), "\u26AA")
                     col_r = colore_ruolo(g["Ruolo"])
@@ -1639,10 +1739,13 @@ if menu == "\U0001F4CB Programma Allenamenti":
                 fase_macro = _m.get("fase")
                 break
 
-    # ---- Data e FOCUS del giorno (settimana tipo) ----
-    cdt1, cdt2 = st.columns([1, 2])
+    # ---- Data, ora di inizio e FOCUS del giorno (settimana tipo) ----
+    cdt1, cdt_ora, cdt2 = st.columns([1, 1, 2])
     with cdt1:
         data_seduta = st.date_input("Data", value=date.today())
+    with cdt_ora:
+        ora_inizio = st.time_input("\U0001F552 Ora di inizio", value=dtime(18, 0), step=300,
+                                   help="Da qui l'app calcola ora di inizio e fine di ogni esercizio.")
     wd = data_seduta.weekday()
     schema = st.session_state.get("schema_settimanale", dict(SCHEMA_DEFAULT))
     giorno_cfg = schema.get(str(wd))
@@ -1693,6 +1796,7 @@ if menu == "\U0001F4CB Programma Allenamenti":
                                              fase_macro=fase_macro, prevenzione=prevenzione, seed=seed)
         st.session_state._ultima_seduta = {
             "data": data_seduta.isoformat(), "obiettivo": " + ".join(obj_eff),
+            "ora_inizio": ora_inizio.strftime("%H:%M"),
             "intensita": intensita, "durata": int(durata),
             "presenti": int(n_presenti),
             "presenti_nomi": [g["Nome"] for g in presenti],
@@ -1722,20 +1826,27 @@ if menu == "\U0001F4CB Programma Allenamenti":
         st.info("\U0001F4A1 Puoi correggere la seduta: modifica, sostituisci, sposta o elimina ogni singolo esercizio qui sotto.")
         es_list = ult["esercizi"]
         tutti_nomi = list(st.session_state.esercizi["Nome"])
+        # ora di inizio della seduta -> calcolo cumulativo di inizio/fine esercizi
+        try:
+            _h, _m = str(ult.get("ora_inizio", "18:00")).split(":")
+            _base_dt = datetime.combine(date.today(), dtime(int(_h), int(_m)))
+        except Exception:
+            _base_dt = datetime.combine(date.today(), dtime(18, 0))
+        _tot_min = sum(int(e.get("Durata_min", 0) or 0) for e in es_list)
+        st.caption("\U0001F552 Inizio **" + _base_dt.strftime("%H:%M") + "** \u00b7 fine prevista **"
+                   + (_base_dt + timedelta(minutes=_tot_min)).strftime("%H:%M") + "**")
+        _offset = 0
         fase_corrente = None
         icone = FASI_ICONA
         for i, e in enumerate(es_list):
             if e["Fase"] != fase_corrente:
                 fase_corrente = e["Fase"]
                 st.markdown(f"#### {icone.get(fase_corrente,'')} {FASI_LABEL.get(fase_corrente, fase_corrente)}")
-            dis = disegno_html(e.get("Disegno", ""))
-            st.markdown(
-                f"<div class='block-seduta'><b>{i+1}. {_html.escape(str(e['Nome']))}</b> "
-                f"<span style='color:#ffbf69'>\u00b7 {e['Durata_min']} min \u00b7 {e['Fondamentale']}</span> {badge_livello(e['Livello'])}<br>"
-                f"<span style='color:#c9d6ea'>{_html.escape(str(e['Descrizione']))}</span><br>"
-                f"<span style='color:#7f93b0;font-size:0.9em'>\U0001F501 Variante: {_html.escape(str(e['Varianti']))}</span>{dis}</div>",
-                unsafe_allow_html=True,
-            )
+            _dur = int(e.get("Durata_min", 0) or 0)
+            _ora_in = (_base_dt + timedelta(minutes=_offset)).strftime("%H:%M")
+            _ora_fin = (_base_dt + timedelta(minutes=_offset + _dur)).strftime("%H:%M")
+            _offset += _dur
+            st.markdown(render_ex_card(i, e, _ora_in, _ora_fin), unsafe_allow_html=True)
             with st.expander(f"\u270F\uFE0F Correggi l'esercizio {i+1}"):
                 # Sostituzione dalla libreria
                 csub1, csub2 = st.columns([3, 1])
@@ -1787,6 +1898,12 @@ if menu == "\U0001F4CB Programma Allenamenti":
                     st.rerun()
                 if b5.button("\U0001F5D1\uFE0F Rimuovi", key=f"ed_del_{i}", use_container_width=True):
                     es_list.pop(i)
+                    st.rerun()
+                # ---- Campo dove disegnare lo schema dell'esercizio ----
+                st.markdown("**\U0001F3D0 Campo \u2014 disegna lo schema dell'esercizio**")
+                _dis_nuovo = editor_disegno(f"seduta_draw_{i}", str(e.get("Disegno", "") or ""))
+                if st.button("\U0001F4BE Salva schema del campo", key=f"ed_dis_save_{i}", use_container_width=True):
+                    e["Disegno"] = _dis_nuovo
                     st.rerun()
 
         # Aggiungi un esercizio alla seduta
@@ -2036,15 +2153,22 @@ if menu == "\U0001F5D3\uFE0F Calendario":
                             st.rerun()
                     else:
                         st.info("Aggiungi prima le giocatrici nella sezione Rosa.")
+                try:
+                    _hh, _mm = str(s.get("ora_inizio", "18:00")).split(":")
+                    _bdt2 = datetime.combine(date.today(), dtime(int(_hh), int(_mm)))
+                except Exception:
+                    _bdt2 = datetime.combine(date.today(), dtime(18, 0))
+                _off2 = 0
                 fase_corrente = None
-                for e in s["esercizi"]:
+                for _k, e in enumerate(s["esercizi"]):
                     if e["Fase"] != fase_corrente:
                         fase_corrente = e["Fase"]
                         st.markdown(f"**{FASI_ICONA.get(fase_corrente,'')} {FASI_LABEL.get(fase_corrente, fase_corrente)}**")
-                    st.markdown(f"- {e['Nome']} ({e['Durata_min']} min) \u2014 _{e['Descrizione']}_")
-                    d = disegno_html(e.get("Disegno", ""))
-                    if d:
-                        st.markdown(d, unsafe_allow_html=True)
+                    _d2 = int(e.get("Durata_min", 0) or 0)
+                    _oi2 = (_bdt2 + timedelta(minutes=_off2)).strftime("%H:%M")
+                    _of2 = (_bdt2 + timedelta(minutes=_off2 + _d2)).strftime("%H:%M")
+                    _off2 += _d2
+                    st.markdown(render_ex_card(_k, e, _oi2, _of2), unsafe_allow_html=True)
 
                 # --- Note post-allenamento (editabili) ---
                 _nota = st.text_area("\U0001F4DD Note post-allenamento", value=s.get("note", ""),
