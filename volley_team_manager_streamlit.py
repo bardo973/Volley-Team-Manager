@@ -13,6 +13,7 @@ import urllib.parse
 import re
 import html as _html
 from datetime import datetime, date, timedelta, time as dtime
+import sys
 
 # Librerie opzionali (il programma funziona anche senza)
 try:
@@ -26,6 +27,16 @@ try:
     _HAS_CANVAS = True
 except Exception:
     _HAS_CANVAS = False
+
+# Modulo generazione PDF scheda allenamento
+try:
+    _PDF_GEN_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scheda_pdf")
+    if os.path.isdir(_PDF_GEN_DIR):
+        sys.path.insert(0, _PDF_GEN_DIR)
+    from genera_pdf_allenamento import seduta_to_pdf_bytes, seduta_html_handwritten
+    _HAS_PDF_GEN = True
+except Exception:
+    _HAS_PDF_GEN = False
 
 # ============================================================
 # CONFIGURAZIONE
@@ -319,6 +330,20 @@ st.markdown("""
     ::-webkit-scrollbar { width: 10px; height: 10px; }
     ::-webkit-scrollbar-thumb { background: #2a3a5c; border-radius: 8px; }
     ::-webkit-scrollbar-thumb:hover { background: var(--vc-accent); }
+    /* ---- Scheda Allenamento (stile foglio scritto a mano) ---- */
+    .scheda-hw { font-family: 'Caveat', 'Segoe Script', 'Comic Sans MS', cursive, sans-serif; color: #2a3546; background: #fff; border-radius: 14px; padding: 20px 24px; border: 1px solid #e0e0e0; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+    .scheda-hw h1 { font-size: 1.6rem; text-align: center; margin: 0 0 2px; color: #1a2233; }
+    .scheda-hw h2 { font-size: 1rem; text-align: center; color: #6b7a90; font-weight: normal; margin: 0 0 10px; }
+    .scheda-hw .info-box { background: #faf9f6; border: 1px solid #ddd; border-radius: 8px; padding: 8px 14px; margin-bottom: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 3px; }
+    .scheda-hw .fase { color: #c84530; font-size: 1rem; font-weight: bold; margin: 14px 0 6px; padding-bottom: 2px; border-bottom: 1px solid #e0e0e0; }
+    .scheda-hw .ex-num { font-size: .95rem; font-weight: bold; margin-bottom: 3px; }
+    .scheda-hw .ex-table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+    .scheda-hw .ex-table th { background: #f5f2ec; padding: 3px 5px; text-align: center; border: 1px solid #ccc; font-weight: bold; font-size: .72rem; }
+    .scheda-hw .ex-table td { padding: 4px 6px; border: 1px solid #ccc; vertical-align: top; }
+    .scheda-hw .ex-table .tc { text-align: center; }
+    .scheda-hw .court-label { font-size: .78rem; color: #888; margin-top: 6px; font-style: italic; }
+    .scheda-hw .court-img { max-width: 280px; border: 1px solid #ccc; border-radius: 6px; background: #fff; margin-top: 4px; }
+    .scheda-hw .divider { text-align: center; margin: 4px 0; color: #c84530; letter-spacing: 4px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -1920,6 +1945,59 @@ if menu == "\U0001F4CB Programma Allenamenti":
                 es_list.sort(key=lambda x: ordine.get(x["Fase"], 99))
                 st.rerun()
 
+        # ===== SCHEDE ALLENAMENTO (stile foglio scritto a mano) =====
+        st.markdown("---")
+        st.subheader("\U0001F4D8 Scheda Allenamento")
+        st.caption("Anteprima della scheda stile 'foglio scritto a mano' con tabella, campo e PDF scaricabile.")
+        
+        # Anteprima HTML inline
+        _tema_sq = st.session_state.get("tema_squadra", TEMA_DEFAULT)
+        ult["_squadra"] = _tema_sq.get("nome_squadra", "VolleyCoach")
+        
+        if _HAS_PDF_GEN:
+            _html_hw = seduta_html_handwritten(ult)
+            _html_b64 = base64.b64encode(_html_hw).decode("ascii")
+            st.markdown(
+                f'<iframe srcdoc="{_html_b64}" style="width:100%;height:600px;border:1px solid #ccc;border-radius:12px;background:#fff;"></iframe>',
+                unsafe_allow_html=True,
+            )
+            # Pulsanti download
+            _dl1, _dl2 = st.columns(2)
+            with _dl1:
+                _pdf_bytes = seduta_to_pdf_bytes(ult)
+                if _pdf_bytes:
+                    st.download_button(
+                        "\U0001F4C4 Scarica PDF (foglio scritto a mano)",
+                        data=_pdf_bytes,
+                        file_name=f"scheda_allenamento_{ult['data']}.pdf",
+                        mime="application/pdf",
+                        key="dl_pdf_seduta_new",
+                        use_container_width=True,
+                    )
+                else:
+                    st.info("PDF non disponibile (manca fpdf2).")
+            with _dl2:
+                st.download_button(
+                    "\U0001F5A8\uFE0F Scarica HTML stampabile",
+                    data=_html_hw,
+                    file_name=f"scheda_allenamento_{ult['data']}.html",
+                    mime="text/html",
+                    key="dl_html_seduta_new",
+                    use_container_width=True,
+                )
+        else:
+            st.info("Modulo PDF non disponibile. Puoi comunque scaricare la versione HTML.")
+            _html_hw = seduta_html_stampabile(ult)
+            st.download_button(
+                "\U0001F5A8\uFE0F Scarica / stampa",
+                data=_html_hw,
+                file_name=f"scheda_allenamento_{ult['data']}.html",
+                mime="text/html",
+                key="dl_html_fallback_new",
+                use_container_width=True,
+            )
+        
+        st.markdown("---")
         _nota_seduta = st.text_area("\U0001F4DD Note (facoltative)",
                                     value=ult.get("note", ""),
                                     placeholder="Es. focus del giorno, com'\u00e8 andata, cosa migliorare...",
@@ -2174,7 +2252,7 @@ if menu == "\U0001F5D3\uFE0F Calendario":
                 _nota = st.text_area("\U0001F4DD Note post-allenamento", value=s.get("note", ""),
                                      key=f"notacal_{i}",
                                      placeholder="Com'\u00e8 andata, cosa migliorare la prossima volta...")
-                cbn1, cbn2, cbn3 = st.columns(3)
+                cbn1, cbn2 = st.columns(2)
                 if cbn1.button("\U0001F4BE Salva note", key=f"savenote_{i}", use_container_width=True):
                     s["note"] = _nota.strip()
                     save_state()
@@ -2188,14 +2266,50 @@ if menu == "\U0001F5D3\uFE0F Calendario":
                     save_state()
                     st.success("Seduta duplicata (con data di oggi)!")
                     st.rerun()
-                cbn3.download_button(
-                    "\U0001F5A8\uFE0F Scarica/stampa",
-                    data=seduta_html_stampabile(s),
-                    file_name="seduta_" + s["data"] + ".html",
-                    mime="text/html",
-                    key=f"print_{i}",
-                    use_container_width=True,
-                )
+                # ---- Scheda Allenamento (foglio scritto a mano) + PDF ----
+                with st.expander("\U0001F4D8 Scheda Allenamento (foglio scritto a mano)"):
+                    _tema_sq2 = st.session_state.get("tema_squadra", TEMA_DEFAULT)
+                    s["_squadra"] = _tema_sq2.get("nome_squadra", "VolleyCoach")
+                    if _HAS_PDF_GEN:
+                        _html_hw2 = seduta_html_handwritten(s)
+                        _html_b642 = base64.b64encode(_html_hw2).decode("ascii")
+                        st.markdown(
+                            f'<iframe srcdoc="{_html_b642}" style="width:100%;height:500px;border:1px solid #ccc;border-radius:12px;background:#fff;"></iframe>',
+                            unsafe_allow_html=True,
+                        )
+                        _dl_c1, _dl_c2 = st.columns(2)
+                        with _dl_c1:
+                            _pdf_bytes2 = seduta_to_pdf_bytes(s)
+                            if _pdf_bytes2:
+                                st.download_button(
+                                    "\U0001F4C4 Scarica PDF",
+                                    data=_pdf_bytes2,
+                                    file_name=f"scheda_allenamento_{s['data']}.pdf",
+                                    mime="application/pdf",
+                                    key=f"dl_pdf_cal_{i}",
+                                    use_container_width=True,
+                                )
+                            else:
+                                st.info("PDF non disponibile.")
+                        with _dl_c2:
+                            st.download_button(
+                                "\U0001F310 Scarica HTML",
+                                data=_html_hw2,
+                                file_name=f"scheda_allenamento_{s['data']}.html",
+                                mime="text/html",
+                                key=f"dl_html_cal_{i}",
+                                use_container_width=True,
+                            )
+                    else:
+                        st.download_button(
+                            "\U0001F5A8\uFE0F Scarica / stampa",
+                            data=seduta_html_stampabile(s),
+                            file_name="seduta_" + s["data"] + ".html",
+                            mime="text/html",
+                            key=f"print_{i}",
+                            use_container_width=True,
+                        )
+                
                 if st.button("\U0001F5D1\uFE0F Elimina seduta", key=f"delsed_{i}"):
                     st.session_state.sedute.remove(s)
                     save_state()
