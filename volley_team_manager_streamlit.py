@@ -858,6 +858,72 @@ def seduta_html_stampabile(s):
     return doc.encode("utf-8")
 
 
+def seduta_foglio_html(s):
+    """Vista 'foglio bianco' con font scritto a mano / stampatello per una
+    seduta programmata (visualizzazione DENTRO l'app, nel Calendario)."""
+    tot = sum(int(e["Durata_min"]) for e in s["esercizi"])
+    pres = ", ".join(s.get("presenti_nomi") or []) or "\u2014"
+    ass = ", ".join(s.get("assenti_nomi") or []) or "\u2014"
+    righe = []
+    fase_corr = None
+    for e in s["esercizi"]:
+        if e["Fase"] != fase_corr:
+            fase_corr = e["Fase"]
+            righe.append("<div class='fg-fase'>" + _html.escape(str(FASI_LABEL.get(fase_corr, fase_corr))) + "</div>")
+        _d = disegno_html(e.get("Disegno", ""))
+        _var = str(e.get("Varianti", "")).strip()
+        righe.append(
+            "<div class='fg-ex'><span class='fg-nome'>" + _html.escape(str(e["Nome"])) + "</span>"
+            " <span class='fg-min'>(" + str(e["Durata_min"]) + " min)</span>"
+            "<div class='fg-desc'>" + _html.escape(str(e.get("Descrizione", ""))) + "</div>"
+            + (("<div class='fg-var'>Variante: " + _html.escape(_var) + "</div>") if _var else "")
+            + _d + "</div>"
+        )
+    html = (
+        "<style>"
+        "@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Patrick+Hand&display=swap');"
+        ".foglio{background:#fffef7;background-image:linear-gradient(#e9e2c8 1px,transparent 1px);"
+        "background-size:100% 30px;border:1px solid #e0d9bf;border-radius:10px;padding:20px 26px;"
+        "margin:6px 0 10px;color:#1a2233;box-shadow:0 6px 20px rgba(0,0,0,.25);"
+        "font-family:'Patrick Hand','Comic Sans MS',cursive;line-height:30px}"
+        ".foglio .fg-h1{font-family:'Caveat',cursive;font-size:2rem;font-weight:700;color:#c25708;"
+        "margin:0 0 2px;line-height:1.1}"
+        ".foglio .fg-meta{font-size:1.1rem;color:#333;margin-bottom:8px;border-bottom:2px dashed #c9b38f;padding-bottom:8px}"
+        ".foglio .fg-fase{font-family:'Caveat',cursive;font-weight:700;font-size:1.5rem;color:#c25708;margin:12px 0 2px}"
+        ".foglio .fg-ex{margin:2px 0 8px}"
+        ".foglio .fg-nome{font-weight:700;font-size:1.2rem}"
+        ".foglio .fg-min{color:#c25708;font-weight:700}"
+        ".foglio .fg-desc{font-size:1.05rem;color:#2a3240}"
+        ".foglio .fg-var{font-size:1rem;color:#5a6472}"
+        ".foglio img{max-width:360px;border-radius:8px;margin-top:4px}"
+        "</style>"
+        "<div class='foglio'>"
+        "<div class='fg-h1'>Scheda allenamento</div>"
+        "<div class='fg-meta'>Data: " + s["data"] + " \u00b7 Obiettivo: " + _html.escape(str(s["obiettivo"])) +
+        " \u00b7 Intensit\u00e0: " + _html.escape(str(s["intensita"])) + " \u00b7 Durata: " + str(tot) + " min<br>"
+        "Presenti: " + _html.escape(pres) + "<br>Assenti: " + _html.escape(ass) + "</div>"
+        + "".join(righe) +
+        "</div>"
+    )
+    return html
+
+
+def presenze_giocatrice(nome):
+    """Conta presenze/sedute totali di una giocatrice dalle sedute salvate.
+    Una seduta 'conta' solo se la giocatrice risulta tra presenti o assenti."""
+    sedute = st.session_state.get("sedute", []) or []
+    tot = 0
+    pres = 0
+    for s in sedute:
+        pn = s.get("presenti_nomi") or []
+        an = s.get("assenti_nomi") or []
+        if nome in pn or nome in an:
+            tot += 1
+            if nome in pn:
+                pres += 1
+    return pres, tot
+
+
 def editor_disegno(key_prefix, valore_corrente=""):
     """Blocco riutilizzabile per aggiungere/aggiornare il disegno di un esercizio.
     Ritorna la stringa base64 scelta (o quella corrente se non si disegna nulla)."""
@@ -1463,10 +1529,20 @@ if menu == "\U0001F465 Rosa":
                         parti.append(f"<b>\U0001F3AF {_html.escape(ob_princ)}</b>")
                     if obiettivi:
                         parti.append(_html.escape(obiettivi).replace("\n", "<br>"))
-                    if parti:
-                        back_body = f"<div class='flip-back-body'>{'<br>'.join(parti)}</div>"
+                    pres_g, tot_g = presenze_giocatrice(str(g["Nome"]))
+                    if tot_g > 0:
+                        _perc = round(pres_g / tot_g * 100)
+                        pres_line = ("<div style='margin-top:8px;border-top:1px solid #ffffff22;"
+                                     "padding-top:6px;font-size:.82rem'>\u2705 Presenze: <b>"
+                                     + str(pres_g) + "/" + str(tot_g) + "</b> (" + str(_perc) + "%)</div>")
                     else:
-                        back_body = "<div class='flip-empty'>Nessun obiettivo inserito.<br>Aprilo qui sotto e compilalo.</div>"
+                        pres_line = ("<div style='margin-top:8px;border-top:1px solid #ffffff22;"
+                                     "padding-top:6px;font-size:.82rem;color:#9fb3d1'>\u2705 Presenze: \u2014</div>")
+                    if parti:
+                        back_body = f"<div class='flip-back-body'>{'<br>'.join(parti)}{pres_line}</div>"
+                    else:
+                        back_body = ("<div class='flip-back-body'><span class='flip-empty'>"
+                                     "Nessun obiettivo inserito.</span>" + pres_line + "</div>")
                     _foto = str(g.get("Foto", "")).strip()
                     if _foto:
                         _foto_html = ("<img src='data:image/png;base64," + _foto + "' style='width:72px;height:72px;"
@@ -2073,15 +2149,57 @@ if menu == "\U0001F5D3\uFE0F Calendario":
                             st.rerun()
                     else:
                         st.info("Aggiungi prima le giocatrici nella sezione Rosa.")
-                fase_corrente = None
-                for e in s["esercizi"]:
-                    if e["Fase"] != fase_corrente:
-                        fase_corrente = e["Fase"]
-                        st.markdown(f"**{FASI_ICONA.get(fase_corrente,'')} {FASI_LABEL.get(fase_corrente, fase_corrente)}**")
-                    st.markdown(f"- {e['Nome']} ({e['Durata_min']} min) \u2014 _{e['Descrizione']}_")
-                    d = disegno_html(e.get("Disegno", ""))
-                    if d:
-                        st.markdown(d, unsafe_allow_html=True)
+                # Vista "foglio bianco" con font scritto a mano / stampatello
+                st.markdown(seduta_foglio_html(s), unsafe_allow_html=True)
+
+                # --- Correggi gli esercizi anche qui (nel Calendario) ---
+                with st.expander("\u270F\uFE0F Correggi gli esercizi di questa seduta"):
+                    es_cal = s["esercizi"]
+                    nomi_lib = list(st.session_state.esercizi["Nome"])
+                    for j, ex in enumerate(es_cal):
+                        st.markdown(f"**{j+1}. {_html.escape(str(ex['Nome']))}** \u00b7 {ex['Durata_min']} min \u00b7 {ex.get('Fase','')}")
+                        kc1, kc2, kc3 = st.columns(3)
+                        cx_nome = kc1.text_input("Nome", value=str(ex["Nome"]), key=f"cal_nome_{i}_{j}")
+                        cx_dur = kc2.number_input("Durata (min)", 1, 60, int(ex["Durata_min"]), key=f"cal_dur_{i}_{j}")
+                        _liv_opt = ["Base", "Medio", "Avanzato"]
+                        cx_liv = kc3.selectbox("Livello", _liv_opt,
+                                               index=_liv_opt.index(ex["Livello"]) if ex.get("Livello") in _liv_opt else 0,
+                                               key=f"cal_liv_{i}_{j}")
+                        cx_desc = st.text_area("Descrizione", value=str(ex.get("Descrizione", "")), key=f"cal_desc_{i}_{j}", height=70)
+                        cx_var = st.text_input("Variante", value=str(ex.get("Varianti", "")), key=f"cal_var_{i}_{j}")
+                        bcal1, bcal2, bcal3, bcal4 = st.columns(4)
+                        if bcal1.button("\U0001F4BE Salva", key=f"cal_save_{i}_{j}", use_container_width=True):
+                            ex["Nome"] = cx_nome.strip(); ex["Durata_min"] = int(cx_dur); ex["Livello"] = cx_liv
+                            ex["Descrizione"] = cx_desc.strip(); ex["Varianti"] = cx_var.strip()
+                            _m = _upsert_esercizio_libreria(ex)
+                            save_state()
+                            st.toast(_m)
+                            st.rerun()
+                        if bcal2.button("\u2B06\uFE0F Su", key=f"cal_up_{i}_{j}", use_container_width=True, disabled=(j == 0)):
+                            es_cal[j - 1], es_cal[j] = es_cal[j], es_cal[j - 1]; save_state(); st.rerun()
+                        if bcal3.button("\u2B07\uFE0F Gi\u00f9", key=f"cal_down_{i}_{j}", use_container_width=True, disabled=(j == len(es_cal) - 1)):
+                            es_cal[j + 1], es_cal[j] = es_cal[j], es_cal[j + 1]; save_state(); st.rerun()
+                        if bcal4.button("\U0001F5D1\uFE0F Rimuovi", key=f"cal_del_{i}_{j}", use_container_width=True):
+                            es_cal.pop(j); save_state(); st.rerun()
+                        rc1, rc2 = st.columns([3, 1])
+                        _idx_sel = nomi_lib.index(str(ex["Nome"])) if str(ex["Nome"]) in nomi_lib else 0
+                        sub_sel = rc1.selectbox("Sostituisci con un esercizio della libreria", nomi_lib,
+                                                index=_idx_sel, key=f"cal_sub_{i}_{j}")
+                        if rc2.button("\U0001F501 Sostituisci", key=f"cal_subbtn_{i}_{j}", use_container_width=True):
+                            nuovo = st.session_state.esercizi[st.session_state.esercizi["Nome"] == sub_sel].iloc[0].to_dict()
+                            nuovo["Fase"] = ex["Fase"]
+                            es_cal[j] = nuovo; save_state(); st.rerun()
+                        st.markdown("---")
+                    ac1, ac2, ac3 = st.columns([2, 2, 1])
+                    add_fase = ac1.selectbox("Fase", FASI, key=f"cal_addfase_{i}")
+                    add_nome = ac2.selectbox("Esercizio", nomi_lib, key=f"cal_addnome_{i}")
+                    if ac3.button("\u2795 Aggiungi", key=f"cal_addbtn_{i}", use_container_width=True):
+                        nuovo = st.session_state.esercizi[st.session_state.esercizi["Nome"] == add_nome].iloc[0].to_dict()
+                        nuovo["Fase"] = add_fase
+                        es_cal.append(nuovo)
+                        _ord = {f: k for k, f in enumerate(FASI)}
+                        es_cal.sort(key=lambda x: _ord.get(x["Fase"], 99))
+                        save_state(); st.rerun()
 
                 # --- Note post-allenamento (editabili) ---
                 _nota = st.text_area("\U0001F4DD Note post-allenamento", value=s.get("note", ""),
