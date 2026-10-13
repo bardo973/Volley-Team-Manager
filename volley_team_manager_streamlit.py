@@ -818,21 +818,184 @@ def campo_visuale_html(presenti):
             + rete + riga_avanti + riga_dietro + "</div>")
 
 
+try:
+    from fpdf import FPDF
+    _HAS_FPDF = True
+except Exception:
+    _HAS_FPDF = False
+
+
+def _ascii(txt):
+    """Rende il testo compatibile con i font standard del PDF (latin-1).
+    Le lettere accentate italiane restano; eventuali emoji diventano '?'."""
+    return str(txt).encode("latin-1", "replace").decode("latin-1")
+
+
+def _court_png_b64():
+    """Campo da pallavolo vuoto (PNG base64) da mostrare a fianco di ogni esercizio."""
+    img = court_background(240, 150)
+    if img is None:
+        return ""
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return base64.b64encode(buf.getvalue()).decode("ascii")
+
+
+def costruisci_programma(s, ora_inizio="18:00", pausa_sec=20):
+    """Espande la seduta in righe con orario di inizio/fine di ogni esercizio e
+    inserisce pause acqua/recupero di 20 secondi nei momenti opportuni
+    (al cambio di fase e dopo un blocco di lavoro prolungato, mai prima del
+    defaticamento)."""
+    try:
+        t = datetime.strptime(str(ora_inizio).strip(), "%H:%M")
+    except Exception:
+        t = datetime.strptime("18:00", "%H:%M")
+    es = s.get("esercizi", [])
+    righe = []
+    fase_corr = None
+    lavoro = 0  # minuti di lavoro dall'ultima pausa
+    for idx, e in enumerate(es):
+        cambio_fase = (fase_corr is not None and e["Fase"] != fase_corr)
+        is_defat = str(e.get("Fase")) == "Defaticamento"
+        if idx > 0 and not is_defat and (cambio_fase or lavoro >= 18):
+            ora_i = t.strftime("%H:%M")
+            t = t + timedelta(seconds=pausa_sec)
+            righe.append({"tipo": "pausa", "ora_i": ora_i, "ora_f": t.strftime("%H:%M"),
+                          "durata": str(pausa_sec) + " sec", "fase": e["Fase"]})
+            lavoro = 0
+        fase_corr = e["Fase"]
+        dur = int(e["Durata_min"])
+        ora_i = t.strftime("%H:%M")
+        t = t + timedelta(minutes=dur)
+        righe.append({"tipo": "ex", "ex": e, "ora_i": ora_i, "ora_f": t.strftime("%H:%M"),
+                      "durata": str(dur) + " min", "fase": e["Fase"]})
+        lavoro += dur
+    return righe
+
+
+def _draw_court_pdf(pdf, x, y, w, h, disegno=""):
+    """Disegna un campo di pallavolo nel PDF (o incolla il disegno dell'esercizio)."""
+    if isinstance(disegno, str) and disegno.strip():
+        try:
+            pdf.image(io.BytesIO(base64.b64decode(disegno)), x=x, y=y, w=w, h=h)
+            return
+        except Exception:
+            pass
+    pdf.set_draw_color(60, 60, 60)
+    pdf.set_line_width(0.5)
+    pdf.rect(x, y, w, h)
+    pdf.set_line_width(0.8)
+    pdf.line(x + w / 2, y, x + w / 2, y + h)  # rete
+    pdf.set_draw_color(150, 150, 150)
+    pdf.set_line_width(0.2)
+    pdf.line(x + w / 3, y, x + w / 3, y + h)
+    pdf.line(x + 2 * w / 3, y, x + 2 * w / 3, y + h)
+    pdf.set_draw_color(0, 0, 0)
+    pdf.set_line_width(0.2)
+
+
+def seduta_pdf_bytes(s, ora_inizio="18:00"):
+    """Genera il PDF della seduta con orari, pause acqua e campo a fianco di ogni
+    esercizio. Richiede fpdf2 (pip install fpdf2); se manca ritorna None."""
+    if not _HAS_FPDF:
+        return None
+    prog = costruisci_programma(s, ora_inizio)
+    tema = st.session_state.get("tema_squadra", TEMA_DEFAULT)
+    squadra = tema.get("nome_squadra", "VolleyCoach")
+    tot = sum(int(e["Durata_min"]) for e in s["esercizi"])
+    pres = ", ".join(s.get("presenti_nomi") or []) or "-"
+    ass = ", ".join(s.get("assenti_nomi") or []) or "-"
+    pdf = FPDF(orientation="P", unit="mm", format="A4")
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+    pdf.set_font("Helvetica", "B", 18)
+    pdf.set_text_color(194, 87, 8)
+    pdf.cell(0, 10, _ascii(squadra), ln=1)
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_font("Helvetica", "", 11)
+    pdf.cell(0, 6, _ascii("Scheda allenamento - " + str(s["data"]) + "   (inizio " + str(ora_inizio) + ")"), ln=1)
+    pdf.cell(0, 6, _ascii("Obiettivo: " + str(s["obiettivo"]) + "   |   Intensita: " + str(s["intensita"]) + "   |   Durata: " + str(tot) + " min"), ln=1)
+    pdf.multi_cell(0, 6, _ascii("Presenti: " + pres))
+    pdf.multi_cell(0, 6, _ascii("Assenti: " + ass))
+    pdf.ln(1)
+    fase_corr = None
+    for r in prog:
+        if r["tipo"] == "pausa":
+            pdf.set_font("Helvetica", "I", 10)
+            pdf.set_text_color(30, 110, 170)
+            pdf.cell(0, 6, _ascii("   " + r["ora_i"] + "  >> Pausa acqua / recupero (" + r["durata"] + ")"), ln=1)
+            pdf.set_text_color(0, 0, 0)
+            continue
+        e = r["ex"]
+        if r["fase"] != fase_corr:
+            fase_corr = r["fase"]
+            pdf.ln(1)
+            pdf.set_font("Helvetica", "B", 13)
+            pdf.set_text_color(194, 87, 8)
+            pdf.cell(0, 7, _ascii(str(FASI_LABEL.get(fase_corr, fase_corr))), ln=1)
+            pdf.set_text_color(0, 0, 0)
+        y0 = pdf.get_y()
+        left_w = 120
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.multi_cell(left_w, 6, _ascii(r["ora_i"] + " - " + r["ora_f"] + "   " + str(e["Nome"]) + "  (" + r["durata"] + ")"))
+        pdf.set_font("Helvetica", "", 10)
+        pdf.multi_cell(left_w, 5, _ascii(str(e.get("Descrizione", ""))))
+        _var = str(e.get("Varianti", "")).strip()
+        if _var:
+            pdf.set_font("Helvetica", "I", 9)
+            pdf.multi_cell(left_w, 5, _ascii("Variante: " + _var))
+        y1 = pdf.get_y()
+        court_x, court_y, cw, ch = 138, y0, 58, 36
+        _draw_court_pdf(pdf, court_x, court_y, cw, ch, e.get("Disegno", ""))
+        pdf.set_y(max(y1, court_y + ch) + 3)
+    note = str(s.get("note", "") or "").strip()
+    if note:
+        pdf.ln(2)
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.cell(0, 6, _ascii("Note:"), ln=1)
+        pdf.set_font("Helvetica", "", 10)
+        pdf.multi_cell(0, 5, _ascii(note))
+    out = pdf.output(dest="S")
+    if isinstance(out, str):
+        out = out.encode("latin-1")
+    return bytes(out)
+
+
 def seduta_html_stampabile(s):
-    """Genera un documento HTML autosufficiente e stampabile per una seduta."""
+    """Genera un documento HTML autosufficiente e stampabile per una seduta,
+    con orari di inizio/fine, pause acqua e campo a fianco di ogni esercizio.
+    (Dal browser: Stampa > Salva come PDF.)"""
     tema = st.session_state.get("tema_squadra", TEMA_DEFAULT)
     c1 = tema.get("colore1", "#ff9f1c")
     squadra = _html.escape(tema.get("nome_squadra", "VolleyCoach"))
+    ora_inizio = str(s.get("ora_inizio", "18:00"))
     tot = sum(int(e["Durata_min"]) for e in s["esercizi"])
+    court_b64 = _court_png_b64()
+    prog = costruisci_programma(s, ora_inizio)
     righe = []
     fase_corr = None
-    for e in s["esercizi"]:
-        if e["Fase"] != fase_corr:
-            fase_corr = e["Fase"]
-            righe.append("<h3 style='color:" + c1 + ";margin:14px 0 4px'>" + _html.escape(str(fase_corr)) + "</h3>")
-        righe.append("<div class='ex'><b>" + _html.escape(str(e["Nome"])) + "</b> "
-                     "<span class='min'>(" + str(e["Durata_min"]) + " min)</span><br>"
-                     "<span class='desc'>" + _html.escape(str(e.get("Descrizione", ""))) + "</span></div>")
+    for r in prog:
+        if r["tipo"] == "pausa":
+            righe.append("<div class='pausa'>\U0001F4A7 " + r["ora_i"] +
+                         " \u2014 Pausa acqua / recupero (" + r["durata"] + ")</div>")
+            continue
+        e = r["ex"]
+        if r["fase"] != fase_corr:
+            fase_corr = r["fase"]
+            righe.append("<h3 style='color:" + c1 + ";margin:14px 0 4px'>" + _html.escape(str(FASI_LABEL.get(fase_corr, fase_corr))) + "</h3>")
+        _d = str(e.get("Disegno", "") or "")
+        _img = _d if _d.strip() else court_b64
+        campo = ("<img class='campo' src='data:image/png;base64," + _img + "'/>") if _img else ""
+        _var = str(e.get("Varianti", "")).strip()
+        var_html = ("<br><span class='var'>Variante: " + _html.escape(_var) + "</span>") if _var else ""
+        righe.append(
+            "<div class='ex'><div class='ex-txt'>"
+            "<span class='ora'>" + r["ora_i"] + "\u2013" + r["ora_f"] + "</span> "
+            "<b>" + _html.escape(str(e["Nome"])) + "</b> "
+            "<span class='min'>(" + r["durata"] + ")</span><br>"
+            "<span class='desc'>" + _html.escape(str(e.get("Descrizione", ""))) + "</span>" + var_html +
+            "</div><div class='ex-campo'>" + campo + "</div></div>"
+        )
     pres = ", ".join(s.get("presenti_nomi") or []) or "\u2014"
     ass = ", ".join(s.get("assenti_nomi") or []) or "\u2014"
     note = _html.escape(s.get("note", "") or "")
@@ -840,14 +1003,21 @@ def seduta_html_stampabile(s):
     doc = (
         "<!DOCTYPE html><html lang='it'><head><meta charset='utf-8'>"
         "<title>Seduta " + s["data"] + "</title><style>"
-        "body{font-family:Segoe UI,Arial,sans-serif;max-width:800px;margin:24px auto;padding:0 18px;color:#1a2233}"
+        "body{font-family:Segoe UI,Arial,sans-serif;max-width:820px;margin:24px auto;padding:0 18px;color:#1a2233}"
         "h1{color:" + c1 + ";margin:0 0 2px}.sub{color:#666;margin:0 0 14px}"
         ".meta{background:" + c1 + "18;border-left:5px solid " + c1 + ";padding:10px 14px;border-radius:8px;margin-bottom:12px}"
-        ".ex{padding:6px 0;border-bottom:1px solid #eee}.min{color:" + c1 + ";font-weight:700}"
-        ".desc{color:#555;font-size:.92rem}.note{margin-top:16px;padding:10px 14px;background:#fff8e6;border-radius:8px}"
+        ".ex{display:flex;gap:14px;align-items:flex-start;padding:8px 0;border-bottom:1px solid #eee}"
+        ".ex-txt{flex:1}.ex-campo{flex:0 0 auto}"
+        ".campo{width:190px;height:118px;object-fit:cover;border:1px solid #ccc;border-radius:6px}"
+        ".ora{color:#1a3a7a;font-weight:700}.min{color:" + c1 + ";font-weight:700}"
+        ".desc{color:#555;font-size:.92rem}.var{color:#777;font-size:.85rem}"
+        ".pausa{color:#1a73c7;background:#eaf4ff;border:1px dashed #9cc6f0;border-radius:8px;"
+        "padding:4px 12px;margin:6px 0;font-weight:600}"
+        ".note{margin-top:16px;padding:10px 14px;background:#fff8e6;border-radius:8px}"
         "@media print{body{margin:0}}</style></head><body>"
         "<h1>" + squadra + "</h1><p class='sub'>Scheda di allenamento</p>"
-        "<div class='meta'><b>Data:</b> " + s["data"] + " &nbsp;\u00b7&nbsp; <b>Obiettivo:</b> " + _html.escape(str(s["obiettivo"])) +
+        "<div class='meta'><b>Data:</b> " + s["data"] + " &nbsp;\u00b7&nbsp; <b>Inizio:</b> " + _html.escape(ora_inizio) +
+        " &nbsp;\u00b7&nbsp; <b>Obiettivo:</b> " + _html.escape(str(s["obiettivo"])) +
         " &nbsp;\u00b7&nbsp; <b>Intensit\u00e0:</b> " + _html.escape(str(s["intensita"])) +
         " &nbsp;\u00b7&nbsp; <b>Durata:</b> " + str(tot) + " min<br>"
         "<b>Presenti:</b> " + _html.escape(pres) + "<br><b>Assenti:</b> " + _html.escape(ass) + "</div>"
@@ -858,26 +1028,42 @@ def seduta_html_stampabile(s):
     return doc.encode("utf-8")
 
 
-def seduta_foglio_html(s):
+def seduta_foglio_html(s, ora_inizio="18:00"):
     """Vista 'foglio bianco' con font scritto a mano / stampatello per una
-    seduta programmata (visualizzazione DENTRO l'app, nel Calendario)."""
+    seduta programmata: orario inizio/fine di ogni esercizio, campo di pallavolo
+    a fianco e pause acqua/recupero."""
     tot = sum(int(e["Durata_min"]) for e in s["esercizi"])
     pres = ", ".join(s.get("presenti_nomi") or []) or "\u2014"
     ass = ", ".join(s.get("assenti_nomi") or []) or "\u2014"
+    court_b64 = _court_png_b64()
+    prog = costruisci_programma(s, ora_inizio)
     righe = []
     fase_corr = None
-    for e in s["esercizi"]:
-        if e["Fase"] != fase_corr:
-            fase_corr = e["Fase"]
+    for r in prog:
+        if r["tipo"] == "pausa":
+            righe.append("<div class='fg-pausa'>\U0001F4A7 " + r["ora_i"] +
+                         " \u2014 Pausa acqua / recupero (" + r["durata"] + ")</div>")
+            continue
+        e = r["ex"]
+        if r["fase"] != fase_corr:
+            fase_corr = r["fase"]
             righe.append("<div class='fg-fase'>" + _html.escape(str(FASI_LABEL.get(fase_corr, fase_corr))) + "</div>")
-        _d = disegno_html(e.get("Disegno", ""))
+        _d = str(e.get("Disegno", "") or "")
+        _img = _d if _d.strip() else court_b64
+        campo_html = ("<img class='fg-campo' src='data:image/png;base64," + _img + "'/>") if _img else ""
         _var = str(e.get("Varianti", "")).strip()
+        var_html = ("<div class='fg-var'>Variante: " + _html.escape(_var) + "</div>") if _var else ""
         righe.append(
-            "<div class='fg-ex'><span class='fg-nome'>" + _html.escape(str(e["Nome"])) + "</span>"
-            " <span class='fg-min'>(" + str(e["Durata_min"]) + " min)</span>"
+            "<div class='fg-ex'>"
+            "<div class='fg-ex-txt'>"
+            "<span class='fg-ora'>" + r["ora_i"] + "\u2013" + r["ora_f"] + "</span> "
+            "<span class='fg-nome'>" + _html.escape(str(e["Nome"])) + "</span>"
+            " <span class='fg-min'>(" + r["durata"] + ")</span>"
             "<div class='fg-desc'>" + _html.escape(str(e.get("Descrizione", ""))) + "</div>"
-            + (("<div class='fg-var'>Variante: " + _html.escape(_var) + "</div>") if _var else "")
-            + _d + "</div>"
+            + var_html +
+            "</div>"
+            "<div class='fg-ex-campo'>" + campo_html + "</div>"
+            "</div>"
         )
     html = (
         "<style>"
@@ -890,16 +1076,23 @@ def seduta_foglio_html(s):
         "margin:0 0 2px;line-height:1.1}"
         ".foglio .fg-meta{font-size:1.1rem;color:#333;margin-bottom:8px;border-bottom:2px dashed #c9b38f;padding-bottom:8px}"
         ".foglio .fg-fase{font-family:'Caveat',cursive;font-weight:700;font-size:1.5rem;color:#c25708;margin:12px 0 2px}"
-        ".foglio .fg-ex{margin:2px 0 8px}"
+        ".foglio .fg-ex{display:flex;gap:14px;align-items:flex-start;margin:4px 0 10px;"
+        "border-bottom:1px dashed #e4dcc2;padding-bottom:6px}"
+        ".foglio .fg-ex-txt{flex:1;min-width:0}"
+        ".foglio .fg-ex-campo{flex:0 0 auto}"
+        ".foglio .fg-campo{width:180px;height:112px;border-radius:6px;border:1px solid #d8c4a8;object-fit:cover}"
+        ".foglio .fg-ora{font-weight:700;color:#1a3a7a;font-size:1.05rem}"
         ".foglio .fg-nome{font-weight:700;font-size:1.2rem}"
         ".foglio .fg-min{color:#c25708;font-weight:700}"
         ".foglio .fg-desc{font-size:1.05rem;color:#2a3240}"
         ".foglio .fg-var{font-size:1rem;color:#5a6472}"
-        ".foglio img{max-width:360px;border-radius:8px;margin-top:4px}"
+        ".foglio .fg-pausa{font-family:'Caveat',cursive;font-size:1.3rem;color:#1a73c7;"
+        "background:#eaf4ff;border:1px dashed #9cc6f0;border-radius:8px;padding:2px 12px;margin:6px 0}"
         "</style>"
         "<div class='foglio'>"
         "<div class='fg-h1'>Scheda allenamento</div>"
-        "<div class='fg-meta'>Data: " + s["data"] + " \u00b7 Obiettivo: " + _html.escape(str(s["obiettivo"])) +
+        "<div class='fg-meta'>Data: " + s["data"] + " \u00b7 Inizio: " + str(ora_inizio) +
+        " \u00b7 Obiettivo: " + _html.escape(str(s["obiettivo"])) +
         " \u00b7 Intensit\u00e0: " + _html.escape(str(s["intensita"])) + " \u00b7 Durata: " + str(tot) + " min<br>"
         "Presenti: " + _html.escape(pres) + "<br>Assenti: " + _html.escape(ass) + "</div>"
         + "".join(righe) +
@@ -2149,8 +2342,22 @@ if menu == "\U0001F5D3\uFE0F Calendario":
                             st.rerun()
                     else:
                         st.info("Aggiungi prima le giocatrici nella sezione Rosa.")
+
+                # Orario di inizio della seduta (per calcolare gli orari degli esercizi)
+                oc1, oc2 = st.columns([1, 3])
+                _ora_val = str(s.get("ora_inizio", "18:00"))
+                ora_inizio = oc1.text_input("\U0001F550 Ora inizio", value=_ora_val,
+                                            key=f"orai_{i}", help="Formato HH:MM (es. 18:00). "
+                                            "Gli orari di ogni esercizio si calcolano da qui.")
+                if oc2.button("\U0001F4BE Salva ora inizio", key=f"saveora_{i}"):
+                    s["ora_inizio"] = ora_inizio.strip() or "18:00"
+                    save_state()
+                    st.success("Ora inizio salvata!")
+                    st.rerun()
+
                 # Vista "foglio bianco" con font scritto a mano / stampatello
-                st.markdown(seduta_foglio_html(s), unsafe_allow_html=True)
+                st.markdown(seduta_foglio_html(s, ora_inizio=ora_inizio.strip() or "18:00"),
+                            unsafe_allow_html=True)
 
                 # --- Correggi gli esercizi anche qui (nel Calendario) ---
                 with st.expander("\u270F\uFE0F Correggi gli esercizi di questa seduta"):
@@ -2205,7 +2412,7 @@ if menu == "\U0001F5D3\uFE0F Calendario":
                 _nota = st.text_area("\U0001F4DD Note post-allenamento", value=s.get("note", ""),
                                      key=f"notacal_{i}",
                                      placeholder="Com'\u00e8 andata, cosa migliorare la prossima volta...")
-                cbn1, cbn2, cbn3 = st.columns(3)
+                cbn1, cbn2, cbn3, cbn4 = st.columns(4)
                 if cbn1.button("\U0001F4BE Salva note", key=f"savenote_{i}", use_container_width=True):
                     s["note"] = _nota.strip()
                     save_state()
@@ -2220,13 +2427,30 @@ if menu == "\U0001F5D3\uFE0F Calendario":
                     st.success("Seduta duplicata (con data di oggi)!")
                     st.rerun()
                 cbn3.download_button(
-                    "\U0001F5A8\uFE0F Scarica/stampa",
+                    "\U0001F5A8\uFE0F Scarica HTML",
                     data=seduta_html_stampabile(s),
                     file_name="seduta_" + s["data"] + ".html",
                     mime="text/html",
                     key=f"print_{i}",
                     use_container_width=True,
                 )
+                _ora_pdf = str(s.get("ora_inizio", ora_inizio.strip() or "18:00"))
+                _pdf = seduta_pdf_bytes(s, ora_inizio=_ora_pdf) if _HAS_FPDF else None
+                if _pdf is not None:
+                    cbn4.download_button(
+                        "\U0001F4C4 Esporta PDF",
+                        data=_pdf,
+                        file_name="seduta_" + s["data"] + ".pdf",
+                        mime="application/pdf",
+                        key=f"pdf_{i}",
+                        use_container_width=True,
+                    )
+                else:
+                    if cbn4.button("\U0001F4C4 Esporta PDF", key=f"pdfinfo_{i}", use_container_width=True):
+                        st.warning("Per esportare in PDF manca il modulo **fpdf2**. "
+                                   "Apri il terminale e scrivi:  pip install fpdf2  "
+                                   "poi riavvia l'app. (Intanto puoi usare 'Scarica HTML' e, dal "
+                                   "browser, Stampa > Salva come PDF.)")
                 if st.button("\U0001F5D1\uFE0F Elimina seduta", key=f"delsed_{i}"):
                     st.session_state.sedute.remove(s)
                     save_state()
