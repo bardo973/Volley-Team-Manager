@@ -267,24 +267,24 @@ st.markdown("""
         50%     { box-shadow: 0 8px 26px rgba(0,0,0,0.32), 0 0 26px rgba(255,159,28,0.42); }
     }
     @keyframes vc-sparkle {
-        0%,100% { opacity:.25; transform:scale(.7); }
-        50%     { opacity:1;   transform:scale(1.15); }
+        0%,100% { opacity:.1; transform:scale(.7); }
+        50%     { opacity:.4; transform:scale(1); }
     }
     /* flip card: sweep di luce + pallino luccicante (il bagliore colorato per
        ruolo resta quello impostato inline) */
     .flip-front::before, .flip-back::before {
         content:""; position:absolute; top:0; left:-70%; width:55%; height:100%;
-        background: linear-gradient(100deg, transparent 0%, rgba(255,255,255,0.10) 40%,
-                    rgba(255,255,255,0.5) 50%, rgba(255,255,255,0.10) 60%, transparent 100%);
+        background: linear-gradient(100deg, transparent 0%, rgba(255,255,255,0.04) 40%,
+                    rgba(255,255,255,0.12) 50%, rgba(255,255,255,0.04) 60%, transparent 100%);
         transform: skewX(-18deg); pointer-events:none; z-index:3;
-        animation: vc-shimmer 4.6s ease-in-out infinite;
+        animation: vc-shimmer 8s ease-in-out infinite;
     }
-    .flip-back::before { animation-delay: 2.3s; }
+    .flip-back::before { animation-delay: 4s; }
     .flip-front::after, .flip-back::after {
-        content:""; position:absolute; top:12px; right:16px; width:7px; height:7px;
+        content:""; position:absolute; top:12px; right:16px; width:5px; height:5px;
         border-radius:50%; background:#fff; z-index:4; pointer-events:none;
-        box-shadow:0 0 8px 2px rgba(255,255,255,0.9);
-        animation: vc-sparkle 2.8s ease-in-out infinite;
+        box-shadow:0 0 5px 1px rgba(255,255,255,0.6);
+        animation: vc-sparkle 3.4s ease-in-out infinite;
     }
     .flip-name, .flip-role, .flip-meta, .flip-hint,
     .flip-back-title, .flip-back-body { position:relative; z-index:5; }
@@ -1804,14 +1804,14 @@ if menu == "\U0001F465 Rosa":
                         _foto_html = "<div style='font-size:1.5rem'>" + emoji + "</div>"
                     st.markdown(
                         f"<div class='flip-card'><div class='flip-inner'>"
-                        f"<div class='flip-front' style=\"border:1px solid {col_r}; box-shadow:0 0 18px {col_r}55, inset 0 0 24px {col_r}18;\">"
+                        f"<div class='flip-front' style=\"border:1px solid {col_r}; box-shadow:0 0 10px {col_r}2e, inset 0 0 14px {col_r}10;\">"
                         f"{_foto_html}"
                         f"<div class='flip-name'>#{_html.escape(str(g['Numero']))} {nome}</div>"
                         f"<div class='flip-role' style='color:{col_r}'>{ruolo_nome}</div>"
                         f"<div class='flip-meta'>{_html.escape(str(g['Altezza']))} cm \u00b7 {emoji} {_html.escape(str(g.get('Stato','')))}</div>"
                         f"<div class='flip-hint'>\u21bb passa il mouse per la scheda</div>"
                         f"</div>"
-                        f"<div class='flip-back' style=\"border:1px solid {col_r}; box-shadow:0 0 18px {col_r}55, inset 0 0 24px {col_r}18;\">"
+                        f"<div class='flip-back' style=\"border:1px solid {col_r}; box-shadow:0 0 10px {col_r}2e, inset 0 0 14px {col_r}10;\">"
                         f"<div class='flip-back-title' style='color:{col_r}'>\U0001F4CB Obiettivi \u2014 {nome}</div>"
                         f"{back_body}"
                         f"</div></div></div>",
