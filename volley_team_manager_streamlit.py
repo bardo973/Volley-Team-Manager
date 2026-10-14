@@ -254,6 +254,61 @@ st.markdown("""
     ::-webkit-scrollbar { width: 10px; height: 10px; }
     ::-webkit-scrollbar-thumb { background: #2a3a5c; border-radius: 8px; }
     ::-webkit-scrollbar-thumb:hover { background: var(--vc-accent); }
+
+    /* ===== Migliorie grafiche: card luminose con luccichio ===== */
+    @keyframes vc-shimmer { 0% { left:-70%; } 100% { left:150%; } }
+    @keyframes vc-glow {
+        0%,100% { box-shadow: 0 6px 20px rgba(0,0,0,0.26), 0 0 12px rgba(255,159,28,0.18); }
+        50%     { box-shadow: 0 8px 26px rgba(0,0,0,0.32), 0 0 26px rgba(255,159,28,0.42); }
+    }
+    @keyframes vc-sparkle {
+        0%,100% { opacity:.25; transform:scale(.7); }
+        50%     { opacity:1;   transform:scale(1.15); }
+    }
+    /* flip card: sweep di luce + pallino luccicante (il bagliore colorato per
+       ruolo resta quello impostato inline) */
+    .flip-front::before, .flip-back::before {
+        content:""; position:absolute; top:0; left:-70%; width:55%; height:100%;
+        background: linear-gradient(100deg, transparent 0%, rgba(255,255,255,0.10) 40%,
+                    rgba(255,255,255,0.5) 50%, rgba(255,255,255,0.10) 60%, transparent 100%);
+        transform: skewX(-18deg); pointer-events:none; z-index:3;
+        animation: vc-shimmer 4.6s ease-in-out infinite;
+    }
+    .flip-back::before { animation-delay: 2.3s; }
+    .flip-front::after, .flip-back::after {
+        content:""; position:absolute; top:12px; right:16px; width:7px; height:7px;
+        border-radius:50%; background:#fff; z-index:4; pointer-events:none;
+        box-shadow:0 0 8px 2px rgba(255,255,255,0.9);
+        animation: vc-sparkle 2.8s ease-in-out infinite;
+    }
+    .flip-name, .flip-role, .flip-meta, .flip-hint,
+    .flip-back-title, .flip-back-body { position:relative; z-index:5; }
+    /* ex-card e block-seduta: sweep di luce al passaggio del mouse */
+    .ex-card, .block-seduta { position:relative; overflow:hidden; }
+    .ex-card::before, .block-seduta::before {
+        content:""; position:absolute; top:0; left:-80%; width:60%; height:100%;
+        background: linear-gradient(100deg, transparent, rgba(255,255,255,0.16), transparent);
+        transform: skewX(-18deg); pointer-events:none; opacity:0; z-index:1;
+    }
+    .ex-card:hover::before, .block-seduta:hover::before { opacity:1; animation: vc-shimmer .9s ease-out; }
+    .ex-card:hover { border-color: var(--vc-accent); box-shadow: 0 0 20px rgba(255,159,28,0.35), 0 6px 18px rgba(0,0,0,0.3); }
+    /* hero: bagliore pulsante + sweep continuo */
+    .vc-hero { position:relative; overflow:hidden; animation: vc-glow 4.5s ease-in-out infinite; }
+    .vc-hero::before {
+        content:""; position:absolute; top:0; left:-70%; width:50%; height:100%;
+        background: linear-gradient(100deg, transparent, rgba(255,255,255,0.13), transparent);
+        transform: skewX(-18deg); pointer-events:none;
+        animation: vc-shimmer 6s ease-in-out infinite;
+    }
+    .vc-hero > * { position:relative; z-index:2; }
+    /* pulsanti: piccolo riflesso di luce al hover */
+    .stButton>button { position:relative; overflow:hidden; }
+    .stButton>button::after {
+        content:""; position:absolute; top:0; left:-80%; width:55%; height:100%;
+        background: linear-gradient(100deg, transparent, rgba(255,255,255,0.35), transparent);
+        transform: skewX(-18deg); pointer-events:none; opacity:0;
+    }
+    .stButton>button:hover::after { opacity:1; animation: vc-shimmer .8s ease-out; }
 </style>
 """, unsafe_allow_html=True)
 
