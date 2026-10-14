@@ -192,19 +192,24 @@ st.markdown("""
         background: linear-gradient(90deg, var(--vc-card2), rgba(22,34,61,0.6));
         border-radius: 12px; padding: 14px 16px; margin-bottom: 10px;
         border-left: 4px solid var(--vc-accent);
-        box-shadow: 0 3px 10px rgba(0,0,0,0.2); transition: transform .15s ease;
+        box-shadow: 0 3px 10px rgba(0,0,0,0.2), 0 14px 34px rgba(0,0,0,0.42); transition: transform .15s ease;
     }
     .block-seduta:hover { transform: translateX(3px); }
     .ex-card {
         background: var(--vc-card); border-radius: 12px; padding: 14px 16px;
         margin-bottom: 10px; border: 1px solid var(--vc-border);
-        box-shadow: 0 3px 10px rgba(0,0,0,0.18); transition: all .15s ease;
+        box-shadow: 0 3px 10px rgba(0,0,0,0.18), 0 14px 34px rgba(0,0,0,0.40); transition: all .15s ease;
     }
     .ex-card:hover { border-color: var(--vc-accent); box-shadow: 0 6px 18px rgba(0,0,0,0.3); }
     .ex-disegno { max-width:100%; border-radius:10px; border:1px solid var(--vc-border); margin-top:8px; background:#fff; }
-    .flip-card { background:transparent; perspective:1200px; height:200px; margin-bottom:6px; }
+    .flip-card { background:transparent; perspective:1200px; height:200px; margin-bottom:6px; position:relative; }
+    .flip-card::before {
+        content:""; position:absolute; left:7%; right:7%; bottom:-14px; height:46%;
+        background: radial-gradient(ellipse at center, rgba(0,0,0,0.55), rgba(0,0,0,0) 72%);
+        filter: blur(16px); z-index:0; pointer-events:none;
+    }
     .flip-inner {
-        position:relative; width:100%; height:100%;
+        position:relative; width:100%; height:100%; z-index:1;
         transition: transform .65s cubic-bezier(.4,.2,.2,1);
         transform-style: preserve-3d;
     }
@@ -239,7 +244,7 @@ st.markdown("""
         background: linear-gradient(120deg, rgba(255,159,28,0.16), rgba(45,110,255,0.14));
         border: 1px solid var(--vc-border); border-radius: 18px;
         padding: 20px 26px; margin-bottom: 16px;
-        box-shadow: 0 6px 22px rgba(0,0,0,0.28);
+        box-shadow: 0 6px 22px rgba(0,0,0,0.28), 0 18px 44px rgba(0,0,0,0.42);
     }
     .vc-hero h1 { margin:0; font-size:1.9rem; }
     .vc-hero p { margin:.3rem 0 0; color: var(--vc-muted); font-size:.95rem; }
