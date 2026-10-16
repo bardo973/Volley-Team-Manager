@@ -737,6 +737,15 @@ if "tema_squadra" not in st.session_state:
 if "gare" not in st.session_state:
     st.session_state.gare = []
 
+# Stato dell'Allenamento Live (timer a schermo)
+for _lk, _lv in {
+    "live_running": False, "live_paused": False, "live_seq": [],
+    "live_idx": 0, "live_remaining": 0, "live_beeped10": False,
+    "live_sig": "", "_beep_now": False,
+}.items():
+    if _lk not in st.session_state:
+        st.session_state[_lk] = _lv
+
 # Applica il TEMA della squadra: sovrascrive i colori accento del CSS base
 # con i colori scelti dall'utente (coerenti in badge, pulsanti, header, grafici).
 _tema = st.session_state.get("tema_squadra", TEMA_DEFAULT)
@@ -913,6 +922,35 @@ def _court_png_b64():
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return base64.b64encode(buf.getvalue()).decode("ascii")
+
+
+@st.cache_data(show_spinner=False)
+def _beep_wav_bytes(freq=880, ms=500, vol=0.5, sr=44100):
+    """Genera un breve 'beep' (onda sinusoidale) come file WAV in memoria.
+    Tutto offline, senza file o librerie esterne: serve per l'avviso sonoro
+    dell'Allenamento Live."""
+    import math
+    import struct
+    import wave
+    n = int(sr * ms / 1000)
+    fade = int(sr * 0.01)  # 10 ms di dissolvenza per evitare il 'click'
+    frames = bytearray()
+    for i in range(n):
+        env = 1.0
+        if i < fade:
+            env = i / fade
+        elif i > n - fade:
+            env = max(0.0, (n - i) / fade)
+        val = int(vol * env * 32767 * math.sin(2 * math.pi * freq * i / sr))
+        frames += struct.pack("<h", val)
+    buf = io.BytesIO()
+    w = wave.open(buf, "wb")
+    w.setnchannels(1)
+    w.setsampwidth(2)
+    w.setframerate(sr)
+    w.writeframes(bytes(frames))
+    w.close()
+    return buf.getvalue()
 
 
 def costruisci_programma(s, ora_inizio="18:00", pausa_sec=20):
@@ -1618,7 +1656,7 @@ with st.sidebar:
 # ============================================================
 menu = st.radio(
     "",
-    ["\U0001F3E0 Dashboard", "\U0001F465 Rosa", "\U0001F9E9 Periodizzazione", "\U0001F4CB Programma Allenamenti",
+    ["\U0001F3E0 Dashboard", "\U0001F465 Rosa", "\U0001F9E9 Periodizzazione", "\U0001F4CB Programma Allenamenti", "\u23F1\uFE0F Live",
      "\U0001F4DA Libreria Esercizi", "\U0001F310 Esercizi Online", "\U0001F5D3\uFE0F Calendario", "\U0001F3C6 Gare", "\U0001F4C8 Statistiche", "\U0001F4CA Presenze"],
     horizontal=True,
     label_visibility="collapsed",
@@ -3089,6 +3127,161 @@ if menu == "\U0001F4C8 Statistiche":
                                    data=_report.encode("utf-8"),
                                    file_name="scheda_" + _sel_n.replace(" ", "_") + ".txt",
                                    mime="text/plain")
+
+# ============================================================
+# ALLENAMENTO LIVE (timer a schermo con avviso sonoro)
+# ============================================================
+if menu == "\u23F1\uFE0F Live":
+    st.header("\u23F1\uFE0F Allenamento Live")
+    st.caption("Avvia la seduta: ogni esercizio va in primo piano con il timer che scorre e un avviso sonoro quando mancano 10 secondi. Per il vero schermo intero del browser premi F11.")
+
+    _sedute_live = sorted(st.session_state.sedute, key=lambda s: s.get("data", ""), reverse=True)
+
+    def _build_seq(s):
+        seq = []
+        for r in costruisci_programma(s):
+            if r["tipo"] == "pausa":
+                seq.append({"nome": "Pausa acqua / recupero", "fase": r.get("fase", ""),
+                            "descrizione": "Breve recupero: bevi e preparati al prossimo esercizio.",
+                            "varianti": "", "fondamentale": "", "disegno": "",
+                            "sec": 20, "pausa": True})
+            else:
+                e = r["ex"]
+                seq.append({"nome": str(e.get("Nome", "Esercizio")), "fase": str(e.get("Fase", "")),
+                            "descrizione": str(e.get("Descrizione", "")),
+                            "varianti": str(e.get("Varianti", "")),
+                            "fondamentale": str(e.get("Fondamentale", "")),
+                            "disegno": e.get("Disegno", ""),
+                            "sec": max(5, int(e.get("Durata_min", 1) or 1) * 60), "pausa": False})
+        return seq
+
+    if not _sedute_live:
+        st.info("Non hai ancora sedute salvate. Crea e salva una seduta in **Programma Allenamenti**.")
+    elif not st.session_state.live_running:
+        # ---- Schermata di preparazione ----
+        def _lab_s(s):
+            return (s.get("data", "") + " \u00b7 " + str(s.get("obiettivo", "")) +
+                    " (" + str(len(s.get("esercizi", []))) + " esercizi)")
+        _idx_sel = st.selectbox("Scegli la seduta da allenare", range(len(_sedute_live)),
+                                format_func=lambda i: _lab_s(_sedute_live[i]))
+        _seduta = _sedute_live[_idx_sel]
+        _seq_prev = _build_seq(_seduta)
+        if not _seq_prev:
+            st.warning("Questa seduta non ha esercizi.")
+        else:
+            _tot_min = round(sum(b["sec"] for b in _seq_prev) / 60)
+            st.markdown("#### \U0001F4CB Anteprima sequenza")
+            st.caption("In totale " + str(len(_seq_prev)) + " blocchi \u00b7 circa " + str(_tot_min) + " minuti.")
+            for i, b in enumerate(_seq_prev):
+                _mm, _ss = b["sec"] // 60, b["sec"] % 60
+                _dur = (str(_mm) + " min" if _ss == 0 else str(b["sec"]) + " sec")
+                st.markdown("**" + str(i + 1) + ".** " + _html.escape(b["nome"]) + " \u2014 _" + _dur + "_")
+            if st.button("\u25B6\uFE0F AVVIA ALLENAMENTO", type="primary", use_container_width=True):
+                st.session_state.live_seq = _seq_prev
+                st.session_state.live_idx = 0
+                st.session_state.live_remaining = _seq_prev[0]["sec"]
+                st.session_state.live_running = True
+                st.session_state.live_paused = False
+                st.session_state.live_beeped10 = False
+                st.session_state._beep_now = False
+                st.rerun()
+    else:
+        # ---- Allenamento in corso ----
+        seq = st.session_state.live_seq
+        idx = st.session_state.live_idx
+        rem = st.session_state.live_remaining
+        cur = seq[idx] if 0 <= idx < len(seq) else None
+
+        # Avviso sonoro (una sola volta per evento)
+        if st.session_state.get("_beep_now"):
+            try:
+                st.audio(_beep_wav_bytes(), format="audio/wav", autoplay=True)
+            except TypeError:
+                st.audio(_beep_wav_bytes(), format="audio/wav")
+            st.session_state._beep_now = False
+
+        if cur is None:
+            st.success("\U0001F3C1 Allenamento completato! Ottimo lavoro.")
+            st.balloons()
+            if st.button("\u21A9\uFE0F Chiudi", use_container_width=True, type="primary"):
+                st.session_state.live_running = False
+                st.rerun()
+        else:
+            col_acc = st.session_state.get("tema_squadra", TEMA_DEFAULT).get("colore1", "#ff9f1c")
+            _fase_ico = FASI_ICONA.get(cur["fase"], "\U0001F3D0")
+            _mm, _ss = rem // 60, rem % 60
+            _tempo = "%d:%02d" % (_mm, _ss)
+            _tot = cur["sec"] or 1
+            _perc = int(100 * (_tot - rem) / _tot)
+            _urgente = rem <= 10
+            _timer_col = "#ff4d4d" if _urgente else col_acc
+            _prossimo = ("\u27A1\uFE0F Prossimo: " + _html.escape(seq[idx + 1]["nome"])) if idx + 1 < len(seq) else "\u2705 Ultimo blocco"
+            _desc_html = _html.escape(cur["descrizione"]).replace("\n", "<br>") or "<i>Nessuna descrizione</i>"
+            _var_html = ("<div style='margin-top:12px;font-size:1.1rem;opacity:.85'>\U0001F504 Varianti: " +
+                         _html.escape(cur["varianti"]).replace("\n", "<br>") + "</div>") if cur.get("varianti") else ""
+            st.markdown(
+                "<div style='background:var(--vc-card);border:2px solid " + _timer_col +
+                ";border-radius:20px;padding:26px 32px;min-height:60vh;display:flex;flex-direction:column;"
+                "box-shadow:0 0 30px " + _timer_col + "33'>"
+                "<div style='font-size:1rem;letter-spacing:2px;text-transform:uppercase;color:var(--vc-muted)'>" +
+                _fase_ico + " " + _html.escape(cur["fase"]) +
+                ((" \u00b7 " + _html.escape(cur["fondamentale"])) if cur.get("fondamentale") else "") +
+                " \u00b7 Blocco " + str(idx + 1) + "/" + str(len(seq)) + "</div>"
+                "<div style='font-size:2.6rem;font-weight:800;margin:6px 0 4px'>" + _html.escape(cur["nome"]) + "</div>"
+                "<div style='font-size:6rem;font-weight:900;line-height:1;color:" + _timer_col +
+                ";text-align:center;margin:10px 0;font-variant-numeric:tabular-nums'>" + _tempo + "</div>"
+                "<div style='height:12px;background:var(--vc-card2);border-radius:8px;overflow:hidden;margin-bottom:16px'>"
+                "<div style='height:100%;width:" + str(_perc) + "%;background:" + _timer_col + "'></div></div>"
+                "<div style='font-size:1.3rem;line-height:1.5'>" + _desc_html + "</div>" + _var_html +
+                "<div style='margin-top:auto;padding-top:16px;font-size:1.15rem;font-weight:700;color:" + col_acc + "'>" +
+                _prossimo + "</div></div>",
+                unsafe_allow_html=True,
+            )
+            if _urgente:
+                st.markdown("<div style='text-align:center;color:#ff4d4d;font-weight:800;font-size:1.2rem;margin-top:8px'>\u23F0 Ultimi secondi!</div>", unsafe_allow_html=True)
+
+            b1, b2, b3, b4 = st.columns(4)
+            if st.session_state.live_paused:
+                if b1.button("\u25B6\uFE0F Riprendi", use_container_width=True, type="primary"):
+                    st.session_state.live_paused = False
+                    st.rerun()
+            else:
+                if b1.button("\u23F8\uFE0F Pausa", use_container_width=True):
+                    st.session_state.live_paused = True
+                    st.rerun()
+            if b2.button("\u23EE\uFE0F Precedente", use_container_width=True, disabled=idx == 0):
+                st.session_state.live_idx = max(0, idx - 1)
+                st.session_state.live_remaining = seq[st.session_state.live_idx]["sec"]
+                st.session_state.live_beeped10 = False
+                st.rerun()
+            if b3.button("\u23ED\uFE0F Salta", use_container_width=True):
+                st.session_state.live_idx = idx + 1
+                st.session_state.live_remaining = seq[idx + 1]["sec"] if idx + 1 < len(seq) else 0
+                st.session_state.live_beeped10 = False
+                st.rerun()
+            if b4.button("\u23F9\uFE0F Stop", use_container_width=True):
+                st.session_state.live_running = False
+                st.session_state.live_paused = False
+                st.rerun()
+
+            # TICK: scorre di 1 secondo (solo se non in pausa)
+            if not st.session_state.live_paused:
+                if 0 < rem <= 10 and not st.session_state.live_beeped10:
+                    st.session_state.live_beeped10 = True
+                    st.session_state._beep_now = True
+                    st.rerun()
+                import time as _time
+                _time.sleep(1)
+                rem -= 1
+                if rem <= 0:
+                    st.session_state.live_idx = idx + 1
+                    st.session_state.live_beeped10 = False
+                    st.session_state._beep_now = True
+                    st.session_state.live_remaining = (
+                        seq[st.session_state.live_idx]["sec"] if st.session_state.live_idx < len(seq) else 0)
+                else:
+                    st.session_state.live_remaining = rem
+                st.rerun()
 
 # ============================================================
 # PRESENZE (mensili)
