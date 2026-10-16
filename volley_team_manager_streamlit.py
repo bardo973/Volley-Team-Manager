@@ -116,6 +116,20 @@ FASI_ICONA = {
 # Migrazione dalle vecchie fasi (4) alla nuova struttura (5)
 _MIGRA_FASE = {"Situazionale": "Globale"}
 
+# Statistiche partita: campi numerici inseriti a mano per ogni giocatrice.
+# (chiave_interna, etichetta mostrata nella tabella)
+STAT_CAMPI = [
+    ("set_giocati", "Set giocati"),
+    ("punti", "Punti totali"),
+    ("attacco", "Punti attacco"),
+    ("ace", "Ace"),
+    ("muri", "Muri punto"),
+    ("errori", "Errori"),
+    ("ric_pos", "Ricezioni +"),
+]
+# Fondamentali valutabili nella scheda giocatrice (voto da 1 a 5)
+FOND_VOTO = ["Battuta", "Ricezione", "Palleggio", "Attacco", "Muro", "Difesa"]
+
 
 def _fase_norm(f):
     return _MIGRA_FASE.get(f, f)
@@ -1605,7 +1619,7 @@ with st.sidebar:
 menu = st.radio(
     "",
     ["\U0001F3E0 Dashboard", "\U0001F465 Rosa", "\U0001F9E9 Periodizzazione", "\U0001F4CB Programma Allenamenti",
-     "\U0001F4DA Libreria Esercizi", "\U0001F310 Esercizi Online", "\U0001F5D3\uFE0F Calendario", "\U0001F3C6 Gare", "\U0001F4CA Presenze"],
+     "\U0001F4DA Libreria Esercizi", "\U0001F310 Esercizi Online", "\U0001F5D3\uFE0F Calendario", "\U0001F3C6 Gare", "\U0001F4C8 Statistiche", "\U0001F4CA Presenze"],
     horizontal=True,
     label_visibility="collapsed",
 )
@@ -2862,6 +2876,219 @@ if menu == "\U0001F3C6 Gare":
                         save_state()
                         st.warning("Gara eliminata.")
                         st.rerun()
+
+# ============================================================
+# STATISTICHE PARTITA & SCHEDE GIOCATRICI
+# ============================================================
+if menu == "\U0001F4C8 Statistiche":
+    st.header("\U0001F4C8 Statistiche")
+    st.caption("Inserisci a mano i dati di ogni partita e consulta la scheda statistica di ogni giocatrice. Tutto resta sul tuo computer, offline.")
+
+    if not st.session_state.rosa:
+        st.info("Aggiungi prima le giocatrici nella sezione **Rosa**.")
+    else:
+        tab_part, tab_sched = st.tabs(["\U0001F3D0 Statistiche partita", "\U0001F464 Schede giocatrici"])
+
+        # ---------------- STATISTICHE PARTITA ----------------
+        with tab_part:
+            if not st.session_state.get("gare"):
+                st.info("Nessuna gara in calendario. Aggiungi prima una partita nella sezione **Gare**.")
+            else:
+                _gare_s = sorted(st.session_state.gare,
+                                 key=lambda x: (x.get("data", ""), x.get("ora", "")), reverse=True)
+
+                def _lab_g(g):
+                    _ha = "\u2705" if g.get("stats", {}).get("giocatrici") else "\u2795"
+                    return (_ha + " " + g.get("data", "") + " \u00b7 " +
+                            (g.get("avversario", "") or "?") + " (" + g.get("casa", "") + ")")
+
+                _sel_g = st.selectbox("Scegli la partita", _gare_s, format_func=_lab_g)
+                st.caption("\u2705 = statistiche gi\u00e0 inserite \u00b7 \u2795 = ancora da compilare")
+                if _sel_g is not None:
+                    _stats = _sel_g.get("stats") or {}
+                    st.markdown("#### \U0001F522 Punteggio set per set")
+                    _set_txt = st.text_input("Risultato set (es. 25-20, 23-25, 25-18)",
+                                             value=_stats.get("set", ""), key="stat_set")
+
+                    # giocatrici da mostrare: le convocate, altrimenti tutta la rosa
+                    _nomi_rosa_s = [x["Nome"] for x in st.session_state.rosa]
+                    _nomi = [n for n in (_sel_g.get("convocate") or []) if n in _nomi_rosa_s]
+                    if not _nomi:
+                        _nomi = _nomi_rosa_s
+                    _gioc = _stats.get("giocatrici") or {}
+                    _rows = []
+                    for n in _nomi:
+                        d = _gioc.get(n, {})
+                        row = {"Giocatrice": n}
+                        for k, lab in STAT_CAMPI:
+                            row[lab] = int(d.get(k, 0) or 0)
+                        _rows.append(row)
+                    _df_in = pd.DataFrame(_rows)
+
+                    st.markdown("#### \U0001F4DD Dati per giocatrice")
+                    st.caption("Scrivi i numeri direttamente nella tabella; usa Tab per spostarti tra le celle.")
+                    _edited = st.data_editor(
+                        _df_in, hide_index=True, use_container_width=True,
+                        disabled=["Giocatrice"],
+                        key="stat_editor_" + str(_gare_s.index(_sel_g)),
+                    )
+                    _note_stat = st.text_area("Note partita (tattica, MVP, ecc.)",
+                                              value=_stats.get("note", ""), key="stat_note")
+                    if st.button("\U0001F4BE Salva statistiche partita", type="primary"):
+                        _gd = {}
+                        for _, r in _edited.iterrows():
+                            nn = r["Giocatrice"]
+                            _gd[nn] = {}
+                            for k, lab in STAT_CAMPI:
+                                _v = r[lab]
+                                _gd[nn][k] = int(_v) if pd.notna(_v) else 0
+                        _sel_g["stats"] = {"set": _set_txt.strip(), "giocatrici": _gd,
+                                           "note": _note_stat.strip()}
+                        save_state()
+                        st.success("Statistiche salvate!")
+                        st.rerun()
+
+                    # ---- Riepilogo squadra della partita ----
+                    if _stats.get("giocatrici"):
+                        st.markdown("---")
+                        st.markdown("#### \U0001F3C6 Riepilogo partita")
+                        if _stats.get("set"):
+                            st.markdown("**Set:** " + _html.escape(_stats["set"]))
+                        _tot = {k: 0 for k, _ in STAT_CAMPI}
+                        for d in _stats["giocatrici"].values():
+                            for k, _ in STAT_CAMPI:
+                                _tot[k] += int(d.get(k, 0) or 0)
+                        mc = st.columns(len(STAT_CAMPI))
+                        for i, (k, lab) in enumerate(STAT_CAMPI):
+                            mc[i].metric(lab, _tot[k])
+                        _best = max(_stats["giocatrici"].items(),
+                                    key=lambda kv: int(kv[1].get("punti", 0) or 0), default=None)
+                        if _best and int(_best[1].get("punti", 0) or 0) > 0:
+                            st.success("\U0001F31F Migliore realizzatrice: **" + _html.escape(_best[0]) +
+                                       "** con " + str(_best[1].get("punti", 0)) + " punti")
+
+        # ---------------- SCHEDE GIOCATRICI ----------------
+        with tab_sched:
+            _nomi_r = [x["Nome"] for x in st.session_state.rosa]
+            _sel_n = st.selectbox("Scegli la giocatrice", _nomi_r, key="sched_sel")
+            _gidx = next((i for i, x in enumerate(st.session_state.rosa) if x["Nome"] == _sel_n), None)
+            if _gidx is not None:
+                g = st.session_state.rosa[_gidx]
+                col_r = colore_ruolo(g.get("Ruolo", "P"))
+                _foto = str(g.get("Foto", "")).strip()
+                _foto_html = (("<img src='data:image/png;base64," + _foto + "' style='width:84px;height:84px;"
+                               "border-radius:50%;object-fit:cover;border:3px solid " + col_r + "'>")
+                              if _foto else "<div style='font-size:2.4rem'>\U0001F3D0</div>")
+                st.markdown(
+                    "<div style='display:flex;align-items:center;gap:16px;background:var(--vc-card);"
+                    "border:1px solid var(--vc-border);border-left:6px solid " + col_r +
+                    ";border-radius:14px;padding:14px 18px'>" + _foto_html +
+                    "<div><div style='font-size:1.4rem;font-weight:800'>#" +
+                    _html.escape(str(g.get('Numero', ''))) + " " + _html.escape(_sel_n) + "</div>"
+                    "<div style='color:" + col_r + ";font-weight:600'>" +
+                    _html.escape(RUOLI.get(g.get('Ruolo'), '')) + "</div>"
+                    "<div style='color:var(--vc-muted);font-size:.85rem'>" +
+                    _html.escape(str(g.get('Altezza', ''))) + " cm \u00b7 " +
+                    _html.escape(str(g.get('Stato', ''))) + "</div></div></div>",
+                    unsafe_allow_html=True,
+                )
+
+                # --- Statistiche aggregate dalle partite ---
+                st.markdown("### \U0001F4CA Statistiche di stagione (dalle partite)")
+                _agg = {k: 0 for k, _ in STAT_CAMPI}
+                _per_gara = []
+                for ga in sorted(st.session_state.get("gare", []), key=lambda x: x.get("data", "")):
+                    gs = (ga.get("stats") or {}).get("giocatrici") or {}
+                    if _sel_n in gs:
+                        d = gs[_sel_n]
+                        for k, _ in STAT_CAMPI:
+                            _agg[k] += int(d.get(k, 0) or 0)
+                        _per_gara.append({
+                            "Partita": ga.get("data", "") + " " + (ga.get("avversario", "") or ""),
+                            "Punti": int(d.get("punti", 0) or 0),
+                            "Ace": int(d.get("ace", 0) or 0),
+                            "Muri": int(d.get("muri", 0) or 0),
+                            "Errori": int(d.get("errori", 0) or 0),
+                        })
+                if _per_gara:
+                    mc = st.columns(len(STAT_CAMPI))
+                    for i, (k, lab) in enumerate(STAT_CAMPI):
+                        mc[i].metric(lab, _agg[k])
+                    _dfg = pd.DataFrame(_per_gara)
+                    st.markdown("**Punti per partita**")
+                    st.bar_chart(_dfg.set_index("Partita")["Punti"])
+                    with st.expander("\U0001F4C4 Dettaglio partita per partita"):
+                        st.dataframe(_dfg, hide_index=True, use_container_width=True)
+                else:
+                    st.caption("Nessuna statistica partita per questa giocatrice. Inseriscile nella scheda **Statistiche partita**.")
+
+                # --- Valutazione tecnica (voti 1-5) ---
+                st.markdown("---")
+                st.markdown("### \u2B50 Valutazione tecnica (1-5)")
+                _val = dict(g.get("Valutazioni") or {})
+                with st.form("form_voti_" + str(_gidx)):
+                    vcols = st.columns(3)
+                    _nuovi = {}
+                    for i, f in enumerate(FOND_VOTO):
+                        with vcols[i % 3]:
+                            _nuovi[f] = st.slider(f, 1, 5, int(_val.get(f, 3) or 3),
+                                                  key="voto_" + str(_gidx) + "_" + f)
+                    _data_val = st.date_input("Data valutazione", value=date.today(),
+                                              key="voto_data_" + str(_gidx))
+                    if st.form_submit_button("\U0001F4BE Salva valutazione", type="primary"):
+                        g["Valutazioni"] = _nuovi
+                        _storico = [h for h in (g.get("Val_storico") or [])
+                                    if h.get("data") != _data_val.isoformat()]
+                        _storico.append({"data": _data_val.isoformat(), "voti": _nuovi})
+                        g["Val_storico"] = sorted(_storico, key=lambda h: h.get("data", ""))
+                        save_state()
+                        st.success("Valutazione salvata!")
+                        st.rerun()
+
+                if _val:
+                    st.markdown("**Profilo tecnico attuale**")
+                    _bars = ""
+                    for f in FOND_VOTO:
+                        v = int(_val.get(f, 0) or 0)
+                        _bars += ("<div style='margin:4px 0'><span style='display:inline-block;width:120px'>" +
+                                  _html.escape(f) + "</span>"
+                                  "<span style='display:inline-block;width:50%;background:var(--vc-card2);"
+                                  "border-radius:6px;vertical-align:middle'>"
+                                  "<span style='display:inline-block;height:14px;border-radius:6px;width:" +
+                                  str(v * 20) + "%;background:" + col_r + "'></span></span>"
+                                  "<b style='margin-left:8px'>" + str(v) + "/5</b></div>")
+                    st.markdown(_bars, unsafe_allow_html=True)
+                    _media = round(sum(int(_val.get(f, 0) or 0) for f in FOND_VOTO) / len(FOND_VOTO), 1)
+                    st.metric("Media tecnica", str(_media) + "/5")
+
+                # Andamento valutazioni nel tempo
+                _storico_v = g.get("Val_storico") or []
+                if len(_storico_v) >= 2:
+                    st.markdown("**\U0001F4C8 Andamento nel tempo (media tecnica)**")
+                    _rows = []
+                    for h in _storico_v:
+                        voti = h.get("voti") or {}
+                        if voti:
+                            _rows.append({"Data": h.get("data", ""),
+                                          "Media": round(sum(voti.values()) / len(voti), 2)})
+                    if _rows:
+                        st.line_chart(pd.DataFrame(_rows).set_index("Data")["Media"])
+
+                # Export scheda in TXT
+                st.markdown("---")
+                _report = "SCHEDA GIOCATRICE\n=================\n"
+                _report += "Nome: " + _sel_n + "\nNumero: " + str(g.get("Numero", "")) + \
+                    "\nRuolo: " + RUOLI.get(g.get("Ruolo"), "") + "\n\n"
+                _report += "STATISTICHE STAGIONE:\n"
+                for k, lab in STAT_CAMPI:
+                    _report += "- " + lab + ": " + str(_agg[k]) + "\n"
+                _report += "\nVALUTAZIONE TECNICA (1-5):\n"
+                for f in FOND_VOTO:
+                    _report += "- " + f + ": " + str(_val.get(f, "-")) + "\n"
+                st.download_button("\U0001F4E5 Scarica scheda (TXT)",
+                                   data=_report.encode("utf-8"),
+                                   file_name="scheda_" + _sel_n.replace(" ", "_") + ".txt",
+                                   mime="text/plain")
 
 # ============================================================
 # PRESENZE (mensili)
