@@ -3124,11 +3124,52 @@ if menu == "\U0001F4C8 Statistiche":
                 for s in SCOUT_SIMBOLI)
             st.markdown("<div style='margin:4px 0 8px'>" + _leg + "</div>", unsafe_allow_html=True)
 
-            sc1, sc2, sc3 = st.columns(3)
-            _data_sc = sc1.date_input("Data allenamento", value=date.today(), key="scout_data")
-            _nomi_rosa_sc = [x["Nome"] for x in st.session_state.rosa]
-            _gioc_sc = sc2.selectbox("Giocatrice", _nomi_rosa_sc, key="scout_gioc")
-            _fond_sc = sc3.selectbox("Fondamentale", SCOUT_FOND, key="scout_fond")
+            _data_sc = st.date_input("Data allenamento", value=date.today(), key="scout_data")
+
+            # --- GIOCATRICE con TASTI rapidi (numero di maglia + cognome) ---
+            _rosa_sc = list(st.session_state.rosa)
+            _nomi_rosa_sc = [x["Nome"] for x in _rosa_sc]
+            if _nomi_rosa_sc and st.session_state.get("scout_gioc") not in _nomi_rosa_sc:
+                st.session_state.scout_gioc = _nomi_rosa_sc[0]
+            st.markdown("**Giocatrice** \u2014 selezionata: **" +
+                        str(st.session_state.get("scout_gioc", "\u2014")) + "**")
+            if not _rosa_sc:
+                st.info("Aggiungi prima le giocatrici nella sezione Rosa.")
+            else:
+                _per_riga = 4
+                for _i0 in range(0, len(_rosa_sc), _per_riga):
+                    _fetta = _rosa_sc[_i0:_i0 + _per_riga]
+                    _gc = st.columns(len(_fetta))
+                    for _j, _g0 in enumerate(_fetta):
+                        _nome0 = _g0["Nome"]
+                        _num0 = _g0.get("Numero", "")
+                        _cogn0 = _nome0.split()[-1] if _nome0.strip() else _nome0
+                        _sel0 = (st.session_state.get("scout_gioc") == _nome0)
+                        if _gc[_j].button(
+                                ("\u2705 " if _sel0 else "") + "#" + str(_num0) + "  " + _cogn0,
+                                key="gbtn_" + str(_i0 + _j),
+                                type=("primary" if _sel0 else "secondary"),
+                                use_container_width=True):
+                            st.session_state.scout_gioc = _nome0
+                            st.rerun()
+            _gioc_sc = st.session_state.get("scout_gioc", _nomi_rosa_sc[0] if _nomi_rosa_sc else "")
+
+            # --- FONDAMENTALE con TASTI rapidi ---
+            if st.session_state.get("scout_fond") not in SCOUT_FOND:
+                st.session_state.scout_fond = SCOUT_FOND[0]
+            st.markdown("**Fondamentale** \u2014 selezionato: **" +
+                        str(st.session_state.get("scout_fond")) + "**")
+            _fc = st.columns(3)
+            for _fi, _f0 in enumerate(SCOUT_FOND):
+                _selF = (st.session_state.get("scout_fond") == _f0)
+                if _fc[_fi % 3].button(
+                        ("\u2705 " if _selF else "") + _f0,
+                        key="fbtn_" + _f0,
+                        type=("primary" if _selF else "secondary"),
+                        use_container_width=True):
+                    st.session_state.scout_fond = _f0
+                    st.rerun()
+            _fond_sc = st.session_state.get("scout_fond", SCOUT_FOND[0])
 
             # Zone di partenza/arrivo per ricostruire la DIREZIONE dell'azione.
             if _fond_sc == "Ricezione":
