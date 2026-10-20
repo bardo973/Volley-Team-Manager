@@ -130,6 +130,43 @@ STAT_CAMPI = [
 # Fondamentali valutabili nella scheda giocatrice (voto da 1 a 5)
 FOND_VOTO = ["Battuta", "Ricezione", "Palleggio", "Attacco", "Muro", "Difesa"]
 
+# ---- Scout allenamento ------------------------------------------------------
+# Ogni esecuzione di un gesto tecnico viene valutata con i simboli classici del
+# volley. Un evento scout = (data, giocatrice, fondamentale, simbolo).
+SCOUT_FOND = ["Battuta", "Ricezione", "Palleggio", "Attacco", "Muro", "Difesa"]
+SCOUT_SIMBOLI = ["#", "+", "-", "/", "="]
+SCOUT_INFO = {
+    "#": {"label": "Perfetto / punto", "color": "#2ecc71"},
+    "+": {"label": "Positivo / buono", "color": "#8fe3a0"},
+    "-": {"label": "Negativo / in difficolt\u00e0", "color": "#f4c257"},
+    "/": {"label": "Scontato / sballata", "color": "#e8873b"},
+    "=": {"label": "Errore / punto perso", "color": "#e74c3c"},
+}
+
+
+def scout_metriche(eventi):
+    """Calcola le metriche standard di scouting da una lista di simboli.
+    - tot: numero di esecuzioni registrate
+    - conteggi: quante volte ogni simbolo
+    - pos (Positivit\u00e0%)  = (# + +) / tot
+    - perf (Perfezione%)  = # / tot
+    - err (Errori%)       = = / tot
+    - eff (Efficienza%)   = (# - = - /) / tot  (stile DataVolley)
+    """
+    c = {s: 0 for s in SCOUT_SIMBOLI}
+    for s in eventi:
+        if s in c:
+            c[s] += 1
+    tot = sum(c.values())
+    if tot == 0:
+        return {"tot": 0, "conteggi": c, "pos": 0.0, "perf": 0.0, "err": 0.0, "eff": 0.0}
+    pos = (c["#"] + c["+"]) / tot * 100
+    perf = c["#"] / tot * 100
+    err = c["="] / tot * 100
+    eff = (c["#"] - c["="] - c["/"]) / tot * 100
+    return {"tot": tot, "conteggi": c, "pos": round(pos, 1),
+            "perf": round(perf, 1), "err": round(err, 1), "eff": round(eff, 1)}
+
 
 def _fase_norm(f):
     return _MIGRA_FASE.get(f, f)
@@ -471,6 +508,7 @@ def _state_dict():
         "schema_settimanale": st.session_state.get("schema_settimanale", dict(SCHEMA_DEFAULT)),
         "tema_squadra": st.session_state.get("tema_squadra", dict(TEMA_DEFAULT)),
         "gare": st.session_state.get("gare", []),
+        "scout": st.session_state.get("scout", []),
         "versione": 5,
     }
 
@@ -564,6 +602,7 @@ def _apply_data(data):
     else:
         st.session_state.tema_squadra = dict(TEMA_DEFAULT)
     st.session_state.gare = data.get("gare", [])
+    st.session_state.scout = data.get("scout", [])
 
 
 def load_state():
@@ -735,6 +774,7 @@ if "initialized" not in st.session_state:
     st.session_state.schema_settimanale = dict(SCHEMA_DEFAULT)
     st.session_state.tema_squadra = dict(TEMA_DEFAULT)
     st.session_state.gare = []
+    st.session_state.scout = []
     load_state()
     # assicura comunque la colonna Disegno
     if "Disegno" not in st.session_state.esercizi.columns:
@@ -776,6 +816,8 @@ if "tema_squadra" not in st.session_state:
     st.session_state.tema_squadra = dict(TEMA_DEFAULT)
 if "gare" not in st.session_state:
     st.session_state.gare = []
+if "scout" not in st.session_state:
+    st.session_state.scout = []
 
 # Stato dell'Allenamento Live (timer a schermo)
 for _lk, _lv in {
@@ -3000,7 +3042,76 @@ if menu == "\U0001F4C8 Statistiche":
     if not st.session_state.rosa:
         st.info("Aggiungi prima le giocatrici nella sezione **Rosa**.")
     else:
-        tab_part, tab_sched = st.tabs(["\U0001F3D0 Statistiche partita", "\U0001F464 Schede giocatrici"])
+        tab_scout, tab_part, tab_sched = st.tabs(["\U0001F4CB Scout allenamento", "\U0001F3D0 Statistiche partita", "\U0001F464 Schede giocatrici"])
+
+        # ---------------- SCOUT ALLENAMENTO ----------------
+        with tab_scout:
+            st.caption("Durante l'allenamento registra ogni esecuzione: scegli "
+                       "giocatrice e fondamentale, poi tocca il simbolo. I dati "
+                       "confluiscono nelle schede giocatrici (tab \U0001F464).")
+            # Legenda dei simboli
+            _leg = "".join(
+                "<span style='display:inline-block;margin:2px 8px 2px 0;padding:3px 10px;"
+                "border-radius:8px;font-weight:700;background:" + SCOUT_INFO[s]["color"] +
+                "22;border-left:4px solid " + SCOUT_INFO[s]["color"] + ";color:#e8f0ff'>"
+                + s + "  " + _html.escape(SCOUT_INFO[s]["label"]) + "</span>"
+                for s in SCOUT_SIMBOLI)
+            st.markdown("<div style='margin:4px 0 8px'>" + _leg + "</div>", unsafe_allow_html=True)
+
+            sc1, sc2, sc3 = st.columns(3)
+            _data_sc = sc1.date_input("Data allenamento", value=date.today(), key="scout_data")
+            _nomi_rosa_sc = [x["Nome"] for x in st.session_state.rosa]
+            _gioc_sc = sc2.selectbox("Giocatrice", _nomi_rosa_sc, key="scout_gioc")
+            _fond_sc = sc3.selectbox("Fondamentale", SCOUT_FOND, key="scout_fond")
+
+            st.markdown("**Esecuzione \u2014 tocca il simbolo:**")
+            _bc = st.columns(len(SCOUT_SIMBOLI))
+            for _bi, _sym in enumerate(SCOUT_SIMBOLI):
+                if _bc[_bi].button(_sym + "  " + SCOUT_INFO[_sym]["label"],
+                                   key="scout_btn_" + _sym, use_container_width=True):
+                    st.session_state.scout.append({
+                        "data": _data_sc.isoformat(), "giocatrice": _gioc_sc,
+                        "fondamentale": _fond_sc, "simbolo": _sym,
+                        "ts": datetime.now().strftime("%H:%M:%S"),
+                    })
+                    save_state()
+                    st.rerun()
+
+            _oggi_ev = [e for e in st.session_state.get("scout", [])
+                        if e.get("data") == _data_sc.isoformat()]
+            st.markdown("#### \U0001F4DD Rilevazioni del " + _data_sc.isoformat() +
+                        " \u2014 **" + str(len(_oggi_ev)) + "** esecuzioni")
+            _cu1, _cu2 = st.columns(2)
+            if _cu1.button("\u21A9\uFE0F Annulla ultima", disabled=not _oggi_ev,
+                           use_container_width=True, key="scout_undo"):
+                for _k in range(len(st.session_state.scout) - 1, -1, -1):
+                    if st.session_state.scout[_k].get("data") == _data_sc.isoformat():
+                        st.session_state.scout.pop(_k)
+                        break
+                save_state()
+                st.rerun()
+            if _cu2.button("\U0001F5D1\uFE0F Svuota giornata", disabled=not _oggi_ev,
+                           use_container_width=True, key="scout_clear"):
+                st.session_state.scout = [e for e in st.session_state.scout
+                                          if e.get("data") != _data_sc.isoformat()]
+                save_state()
+                st.rerun()
+
+            if _oggi_ev:
+                from collections import defaultdict as _dd0
+                _agg0 = _dd0(list)
+                for e in _oggi_ev:
+                    _agg0[(e.get("giocatrice", "?"), e.get("fondamentale", "?"))].append(e.get("simbolo"))
+                _rows0 = []
+                for (_gn, _fn), _syms in sorted(_agg0.items()):
+                    _m = scout_metriche(_syms)
+                    _rows0.append({
+                        "Giocatrice": _gn, "Fondamentale": _fn, "Tocchi": _m["tot"],
+                        "#": _m["conteggi"]["#"], "+": _m["conteggi"]["+"],
+                        "-": _m["conteggi"]["-"], "/": _m["conteggi"]["/"], "=": _m["conteggi"]["="],
+                        "Pos.%": _m["pos"], "Eff.%": _m["eff"], "Err.%": _m["err"],
+                    })
+                st.dataframe(pd.DataFrame(_rows0), hide_index=True, use_container_width=True)
 
         # ---------------- STATISTICHE PARTITA ----------------
         with tab_part:
@@ -3134,6 +3245,49 @@ if menu == "\U0001F4C8 Statistiche":
                         st.dataframe(_dfg, hide_index=True, use_container_width=True)
                 else:
                     st.caption("Nessuna statistica partita per questa giocatrice. Inseriscile nella scheda **Statistiche partita**.")
+
+                # --- Scout allenamenti (esecuzioni # + - / =) ---
+                st.markdown("---")
+                st.markdown("### \U0001F4CB Scout allenamenti (esecuzioni)")
+                _sc_ev = [e for e in st.session_state.get("scout", [])
+                          if e.get("giocatrice") == _sel_n]
+                if _sc_ev:
+                    from collections import defaultdict as _dd1
+                    _byf = _dd1(list)
+                    for e in _sc_ev:
+                        _byf[e.get("fondamentale", "?")].append(e.get("simbolo"))
+                    _tot_all = scout_metriche([e.get("simbolo") for e in _sc_ev])
+                    _kc = st.columns(4)
+                    _kc[0].metric("Esecuzioni", _tot_all["tot"])
+                    _kc[1].metric("Positivit\u00e0", str(_tot_all["pos"]) + "%")
+                    _kc[2].metric("Efficienza", str(_tot_all["eff"]) + "%")
+                    _kc[3].metric("Errori", str(_tot_all["err"]) + "%")
+                    _rows2 = []
+                    for f in SCOUT_FOND:
+                        if f in _byf:
+                            _m2 = scout_metriche(_byf[f])
+                            _rows2.append({
+                                "Fondamentale": f, "Tocchi": _m2["tot"],
+                                "#": _m2["conteggi"]["#"], "+": _m2["conteggi"]["+"],
+                                "-": _m2["conteggi"]["-"], "/": _m2["conteggi"]["/"], "=": _m2["conteggi"]["="],
+                                "Pos.%": _m2["pos"], "Eff.%": _m2["eff"], "Err.%": _m2["err"],
+                            })
+                    st.dataframe(pd.DataFrame(_rows2), hide_index=True, use_container_width=True)
+                    _bars2 = ""
+                    for r in _rows2:
+                        _w = max(0, min(100, r["Pos.%"]))
+                        _bars2 += ("<div style='margin:4px 0'><span style='display:inline-block;width:120px'>" +
+                                   _html.escape(r["Fondamentale"]) + "</span>"
+                                   "<span style='display:inline-block;width:50%;background:var(--vc-card2);"
+                                   "border-radius:6px;vertical-align:middle'>"
+                                   "<span style='display:inline-block;height:14px;border-radius:6px;width:" +
+                                   str(_w) + "%;background:" + col_r + "'></span></span>"
+                                   "<b style='margin-left:8px'>" + str(r["Pos.%"]) + "% pos.</b></div>")
+                    st.markdown("**Positivit\u00e0 per fondamentale**")
+                    st.markdown(_bars2, unsafe_allow_html=True)
+                else:
+                    st.caption("Nessuna rilevazione scout per questa giocatrice. "
+                               "Registrale nel tab **\U0001F4CB Scout allenamento**.")
 
                 # --- Valutazione tecnica (voti 1-5) ---
                 st.markdown("---")
