@@ -3108,7 +3108,7 @@ if menu == "\U0001F4C8 Statistiche":
     if not st.session_state.rosa:
         st.info("Aggiungi prima le giocatrici nella sezione **Rosa**.")
     else:
-        tab_scout, tab_part, tab_sched = st.tabs(["\U0001F4CB Scout allenamento", "\U0001F3D0 Statistiche partita", "\U0001F464 Schede giocatrici"])
+        tab_scout, tab_part, tab_sched, tab_conf = st.tabs(["\U0001F4CB Scout allenamento", "\U0001F3D0 Statistiche partita", "\U0001F464 Schede giocatrici", "\u2696\uFE0F Confronto"])
 
         # ---------------- SCOUT ALLENAMENTO ----------------
         with tab_scout:
@@ -3519,6 +3519,122 @@ if menu == "\U0001F4C8 Statistiche":
                                    data=_report.encode("utf-8"),
                                    file_name="scheda_" + _sel_n.replace(" ", "_") + ".txt",
                                    mime="text/plain")
+
+        # ---------------- CONFRONTO TRA DUE GIOCATRICI ----------------
+        with tab_conf:
+            st.caption("Confronto rapido fianco a fianco: statistiche di stagione, "
+                       "scout allenamenti e valutazione tecnica.")
+            _nomi_cf = [x["Nome"] for x in st.session_state.rosa]
+            if len(_nomi_cf) < 2:
+                st.info("Servono almeno due giocatrici in rosa per il confronto.")
+            else:
+                _cc = st.columns(2)
+                _g1 = _cc[0].selectbox("Giocatrice A", _nomi_cf, index=0, key="conf_g1")
+                _def2 = 1 if _nomi_cf[1] != _g1 else (2 if len(_nomi_cf) > 2 else 0)
+                _g2 = _cc[1].selectbox("Giocatrice B", _nomi_cf, index=_def2, key="conf_g2")
+
+                def _info_gioc(_nome):
+                    return next((x for x in st.session_state.rosa if x["Nome"] == _nome), {})
+
+                def _stat_stagione(_nome):
+                    _a = {k: 0 for k, _ in STAT_CAMPI}
+                    for ga in st.session_state.get("gare", []):
+                        gs = (ga.get("stats") or {}).get("giocatrici") or {}
+                        if _nome in gs:
+                            d = gs[_nome]
+                            for k, _ in STAT_CAMPI:
+                                _a[k] += int(d.get(k, 0) or 0)
+                    return _a
+
+                def _scout_tot(_nome):
+                    _syms = [e.get("simbolo") for e in st.session_state.get("scout", [])
+                             if e.get("giocatrice") == _nome]
+                    return scout_metriche(_syms)
+
+                _ga1, _ga2 = _info_gioc(_g1), _info_gioc(_g2)
+                _col1, _col2 = colore_ruolo(_ga1.get("Ruolo", "P")), colore_ruolo(_ga2.get("Ruolo", "P"))
+
+                # Intestazioni colorate
+                _hc = st.columns(2)
+                for _hcol, _gg, _cc0 in ((_hc[0], _ga1, _col1), (_hc[1], _ga2, _col2)):
+                    _hcol.markdown(
+                        "<div style='text-align:center;background:var(--vc-card);border:1px solid "
+                        "var(--vc-border);border-top:5px solid " + _cc0 + ";border-radius:12px;"
+                        "padding:10px'><div style='font-size:1.3rem;font-weight:800'>#" +
+                        _html.escape(str(_gg.get("Numero", ""))) + " " +
+                        _html.escape(str(_gg.get("Nome", ""))) + "</div><div style='color:" + _cc0 +
+                        ";font-weight:600'>" + _html.escape(RUOLI.get(_gg.get("Ruolo"), "")) +
+                        "</div></div>", unsafe_allow_html=True)
+
+                def _riga_conf(_label, _v1, _v2, _suffix="", _alto_meglio=True):
+                    try:
+                        _f1, _f2 = float(_v1), float(_v2)
+                    except (TypeError, ValueError):
+                        _f1 = _f2 = 0.0
+                    if _f1 == _f2:
+                        _b1 = _b2 = "#e8f0ff"
+                    elif (_f1 > _f2) == _alto_meglio:
+                        _b1, _b2 = "#2ecc71", "#e8f0ff"
+                    else:
+                        _b1, _b2 = "#e8f0ff", "#2ecc71"
+                    return ("<tr><td style='padding:6px 10px;color:" + _b1 +
+                            ";font-weight:700;text-align:center;width:28%'>" + str(_v1) + _suffix +
+                            "</td><td style='padding:6px 10px;text-align:center;color:var(--vc-muted);"
+                            "width:44%'>" + _html.escape(_label) + "</td><td style='padding:6px 10px;"
+                            "color:" + _b2 + ";font-weight:700;text-align:center;width:28%'>" +
+                            str(_v2) + _suffix + "</td></tr>")
+
+                # --- Statistiche di stagione ---
+                _s1, _s2 = _stat_stagione(_g1), _stat_stagione(_g2)
+                st.markdown("### \U0001F4CA Statistiche di stagione")
+                _tab_html = "<table style='width:100%;border-collapse:collapse'>"
+                for k, lab in STAT_CAMPI:
+                    _alto = (k != "errori")
+                    _tab_html += _riga_conf(lab, _s1[k], _s2[k], _alto_meglio=_alto)
+                _tab_html += "</table>"
+                st.markdown(_tab_html, unsafe_allow_html=True)
+                st.caption("Verde = valore migliore (per gli errori vince il pi\u00f9 basso).")
+
+                # --- Scout allenamenti ---
+                _m1, _m2 = _scout_tot(_g1), _scout_tot(_g2)
+                st.markdown("### \U0001F4CB Scout allenamenti")
+                _tab2 = "<table style='width:100%;border-collapse:collapse'>"
+                _tab2 += _riga_conf("Esecuzioni", _m1["tot"], _m2["tot"])
+                _tab2 += _riga_conf("Positivit\u00e0 %", _m1["pos"], _m2["pos"], "%")
+                _tab2 += _riga_conf("Efficienza %", _m1["eff"], _m2["eff"], "%")
+                _tab2 += _riga_conf("Errori %", _m1["err"], _m2["err"], "%", _alto_meglio=False)
+                _tab2 += "</table>"
+                st.markdown(_tab2, unsafe_allow_html=True)
+
+                # --- Valutazione tecnica (voti 1-5) ---
+                _val1 = dict(_ga1.get("Valutazioni") or {})
+                _val2 = dict(_ga2.get("Valutazioni") or {})
+                if _val1 or _val2:
+                    st.markdown("### \u2B50 Valutazione tecnica (1-5)")
+                    for f in FOND_VOTO:
+                        _v1 = int(_val1.get(f, 0) or 0)
+                        _v2 = int(_val2.get(f, 0) or 0)
+                        st.markdown(
+                            "<div style='display:flex;align-items:center;gap:8px;margin:3px 0'>"
+                            "<div style='width:40px;text-align:right;font-weight:700'>" + str(_v1) + "</div>"
+                            "<div style='flex:1;background:var(--vc-card2);border-radius:6px;height:14px;"
+                            "position:relative'><span style='position:absolute;right:0;height:14px;"
+                            "border-radius:6px;width:" + str(_v1 * 20) + "%;background:" + _col1 + "'></span></div>"
+                            "<div style='width:110px;text-align:center;color:var(--vc-muted);font-size:.85rem'>" +
+                            _html.escape(f) + "</div>"
+                            "<div style='flex:1;background:var(--vc-card2);border-radius:6px;height:14px'>"
+                            "<span style='display:inline-block;height:14px;border-radius:6px;width:" +
+                            str(_v2 * 20) + "%;background:" + _col2 + "'></span></div>"
+                            "<div style='width:40px;font-weight:700'>" + str(_v2) + "</div></div>",
+                            unsafe_allow_html=True)
+                    _med1 = round(sum(int(_val1.get(f, 0) or 0) for f in FOND_VOTO) / len(FOND_VOTO), 1)
+                    _med2 = round(sum(int(_val2.get(f, 0) or 0) for f in FOND_VOTO) / len(FOND_VOTO), 1)
+                    _mc = st.columns(2)
+                    _mc[0].metric("Media tecnica " + _g1, str(_med1) + "/5")
+                    _mc[1].metric("Media tecnica " + _g2, str(_med2) + "/5")
+                else:
+                    st.caption("Nessuna valutazione tecnica inserita per queste giocatrici "
+                               "(aggiungila nel tab \U0001F464 Schede giocatrici).")
 
 # ============================================================
 # ALLENAMENTO LIVE (timer a schermo con avviso sonoro)
