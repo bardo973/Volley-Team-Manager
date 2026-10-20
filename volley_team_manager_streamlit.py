@@ -3108,7 +3108,7 @@ if menu == "\U0001F4C8 Statistiche":
     if not st.session_state.rosa:
         st.info("Aggiungi prima le giocatrici nella sezione **Rosa**.")
     else:
-        tab_scout, tab_part, tab_sched, tab_conf = st.tabs(["\U0001F4CB Scout allenamento", "\U0001F3D0 Statistiche partita", "\U0001F464 Schede giocatrici", "\u2696\uFE0F Confronto"])
+        tab_scout, tab_part, tab_sched, tab_conf, tab_team = st.tabs(["\U0001F4CB Scout allenamento", "\U0001F3D0 Statistiche partita", "\U0001F464 Schede giocatrici", "\u2696\uFE0F Confronto", "\U0001F465 Squadra"])
 
         # ---------------- SCOUT ALLENAMENTO ----------------
         with tab_scout:
@@ -3635,6 +3635,107 @@ if menu == "\U0001F4C8 Statistiche":
                 else:
                     st.caption("Nessuna valutazione tecnica inserita per queste giocatrici "
                                "(aggiungila nel tab \U0001F464 Schede giocatrici).")
+
+        # ---------------- VISTA SQUADRA (tutte le giocatrici) ----------------
+        with tab_team:
+            st.caption("Panoramica di tutta la squadra: statistiche di stagione, "
+                       "scout allenamenti e media tecnica a colpo d'occhio.")
+            _rosa_tm = list(st.session_state.rosa)
+            if not _rosa_tm:
+                st.info("Aggiungi le giocatrici nella sezione Rosa.")
+            else:
+                def _stat_stag_tm(_nome):
+                    _a = {k: 0 for k, _ in STAT_CAMPI}
+                    for ga in st.session_state.get("gare", []):
+                        gs = (ga.get("stats") or {}).get("giocatrici") or {}
+                        if _nome in gs:
+                            d = gs[_nome]
+                            for k, _ in STAT_CAMPI:
+                                _a[k] += int(d.get(k, 0) or 0)
+                    return _a
+
+                def _scout_tm(_nome):
+                    _syms = [e.get("simbolo") for e in st.session_state.get("scout", [])
+                             if e.get("giocatrice") == _nome]
+                    return scout_metriche(_syms)
+
+                _rows_tm = []
+                for g0 in _rosa_tm:
+                    _nome0 = g0.get("Nome", "")
+                    _s0 = _stat_stag_tm(_nome0)
+                    _m0 = _scout_tm(_nome0)
+                    _val0 = dict(g0.get("Valutazioni") or {})
+                    _med0 = (round(sum(int(_val0.get(f, 0) or 0) for f in FOND_VOTO) / len(FOND_VOTO), 1)
+                             if _val0 else 0.0)
+                    _rows_tm.append({
+                        "#": g0.get("Numero", ""),
+                        "Giocatrice": _nome0,
+                        "Ruolo": RUOLI.get(g0.get("Ruolo"), ""),
+                        "Set": _s0["set_giocati"],
+                        "Punti": _s0["punti"],
+                        "Attacco": _s0["attacco"],
+                        "Ace": _s0["ace"],
+                        "Muri": _s0["muri"],
+                        "Errori": _s0["errori"],
+                        "Ric.+": _s0["ric_pos"],
+                        "Scout": _m0["tot"],
+                        "Pos.%": _m0["pos"],
+                        "Eff.%": _m0["eff"],
+                        "Media tec.": _med0,
+                    })
+                _df_tm = pd.DataFrame(_rows_tm)
+
+                # Ordinamento scelto con tasti rapidi
+                _ord_opts = ["#", "Punti", "Attacco", "Ace", "Muri", "Pos.%", "Eff.%", "Media tec."]
+                if st.session_state.get("team_ord") not in _ord_opts:
+                    st.session_state.team_ord = "Punti"
+                st.markdown("**Ordina per:**")
+                _oc = st.columns(len(_ord_opts))
+                for _oi, _oo in enumerate(_ord_opts):
+                    _selo = (st.session_state.team_ord == _oo)
+                    if _oc[_oi].button(("\u2705 " if _selo else "") + _oo,
+                                       key="teamord_" + _oo,
+                                       type=("primary" if _selo else "secondary"),
+                                       use_container_width=True):
+                        st.session_state.team_ord = _oo
+                        st.rerun()
+                _ordc = st.session_state.team_ord
+                _asc = (_ordc == "#")
+                _df_show = _df_tm.sort_values(_ordc, ascending=_asc).reset_index(drop=True)
+                st.dataframe(_df_show, hide_index=True, use_container_width=True)
+
+                # Classifiche rapide (grafici a barre)
+                st.markdown("### \U0001F3C6 Classifiche squadra")
+                _gc = st.columns(2)
+                with _gc[0]:
+                    st.markdown("**Punti totali**")
+                    _dp = _df_tm[_df_tm["Punti"] > 0]
+                    if not _dp.empty:
+                        st.bar_chart(_dp.set_index("Giocatrice")["Punti"])
+                    else:
+                        st.caption("Nessun punto registrato nelle partite.")
+                with _gc[1]:
+                    st.markdown("**Positivit\u00e0 scout %**")
+                    _dpos = _df_tm[_df_tm["Scout"] > 0]
+                    if not _dpos.empty:
+                        st.bar_chart(_dpos.set_index("Giocatrice")["Pos.%"])
+                    else:
+                        st.caption("Nessuna rilevazione scout registrata.")
+
+                # Totali di squadra
+                st.markdown("### \U0001F4CA Totali di squadra")
+                _tc = st.columns(5)
+                _tc[0].metric("Punti", int(_df_tm["Punti"].sum()))
+                _tc[1].metric("Ace", int(_df_tm["Ace"].sum()))
+                _tc[2].metric("Muri", int(_df_tm["Muri"].sum()))
+                _tc[3].metric("Errori", int(_df_tm["Errori"].sum()))
+                _tc[4].metric("Esecuzioni scout", int(_df_tm["Scout"].sum()))
+
+                # Export CSV di tutta la squadra
+                st.download_button(
+                    "\U0001F4E5 Scarica tabella squadra (CSV)",
+                    data=_df_show.to_csv(index=False).encode("utf-8"),
+                    file_name="squadra_statistiche.csv", mime="text/csv")
 
 # ============================================================
 # ALLENAMENTO LIVE (timer a schermo con avviso sonoro)
