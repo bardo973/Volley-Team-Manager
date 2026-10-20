@@ -168,6 +168,72 @@ def scout_metriche(eventi):
             "perf": round(perf, 1), "err": round(err, 1), "eff": round(eff, 1)}
 
 
+# Coordinate (in viewBox 320x620) delle 6 zone per met\u00e0 campo.
+# Met\u00e0 in basso = la nostra; met\u00e0 in alto = avversari. Rete a y=310.
+SCOUT_ZONE_NOI = {4: (67, 360), 3: (160, 360), 2: (253, 360),
+                  5: (67, 550), 6: (160, 550), 1: (253, 550)}
+SCOUT_ZONE_AVV = {4: (67, 260), 3: (160, 260), 2: (253, 260),
+                  5: (67, 70), 6: (160, 70), 1: (253, 70)}
+
+
+def _scout_lati(fondamentale):
+    """Da quale lato parte e dove arriva l'azione, per disegnare le frecce."""
+    if fondamentale == "Ricezione":
+        return ("avv", "noi")       # la battuta avversaria arriva nel nostro campo
+    if fondamentale in ("Battuta", "Attacco"):
+        return ("noi", "avv")       # noi mandiamo la palla di l\u00e0
+    return ("noi", "noi")
+
+
+def scout_campo_svg(eventi, fondamentale=None):
+    """Disegna un campo di pallavolo (SVG) con le direzioni registrate:
+    una freccia per ogni azione, dalla zona di partenza a quella di arrivo,
+    colorata in base al simbolo di esecuzione. Ritorna (svg, n_frecce)."""
+    s = ["<svg width='100%' viewBox='0 0 320 620' "
+         "style='max-width:360px;display:block;margin:6px auto' "
+         "xmlns='http://www.w3.org/2000/svg'>"]
+    # campo
+    s.append("<rect x='20' y='20' width='280' height='580' fill='#e3954f' "
+             "stroke='#ffffff' stroke-width='3'/>")
+    # linee dei 3 metri (attacco)
+    s.append("<line x1='20' y1='213' x2='300' y2='213' stroke='#ffffff' stroke-width='2'/>")
+    s.append("<line x1='20' y1='407' x2='300' y2='407' stroke='#ffffff' stroke-width='2'/>")
+    # separatori di colonna
+    s.append("<line x1='113' y1='20' x2='113' y2='600' stroke='#ffffff' stroke-width='1' opacity='0.45'/>")
+    s.append("<line x1='207' y1='20' x2='207' y2='600' stroke='#ffffff' stroke-width='1' opacity='0.45'/>")
+    # rete
+    s.append("<rect x='16' y='306' width='288' height='8' fill='#1f2a44'/>")
+    s.append("<text x='160' y='303' fill='#1f2a44' font-size='10' text-anchor='middle' font-weight='bold'>RETE</text>")
+    s.append("<text x='26' y='36' fill='#5a3410' font-size='10' font-weight='bold'>AVVERSARI</text>")
+    s.append("<text x='26' y='592' fill='#5a3410' font-size='10' font-weight='bold'>NOI</text>")
+    for z, (x, y) in SCOUT_ZONE_NOI.items():
+        s.append(f"<text x='{x}' y='{y-16}' fill='#7a4a16' font-size='11' text-anchor='middle' font-weight='bold'>{z}</text>")
+    for z, (x, y) in SCOUT_ZONE_AVV.items():
+        s.append(f"<text x='{x}' y='{y+22}' fill='#7a4a16' font-size='11' text-anchor='middle' font-weight='bold'>{z}</text>")
+    n = 0
+    for e in eventi:
+        f = e.get("fondamentale")
+        if fondamentale and f != fondamentale:
+            continue
+        zs = e.get("zona_start")
+        ze = e.get("zona_end")
+        if not zs or not ze:
+            continue
+        lat_s, lat_e = _scout_lati(f)
+        p0 = (SCOUT_ZONE_NOI if lat_s == "noi" else SCOUT_ZONE_AVV).get(int(zs))
+        p1 = (SCOUT_ZONE_NOI if lat_e == "noi" else SCOUT_ZONE_AVV).get(int(ze))
+        if not p0 or not p1:
+            continue
+        col = SCOUT_INFO.get(e.get("simbolo"), {}).get("color", "#ffffff")
+        s.append(f"<line x1='{p0[0]}' y1='{p0[1]}' x2='{p1[0]}' y2='{p1[1]}' "
+                 f"stroke='{col}' stroke-width='2.5' opacity='0.85'/>")
+        s.append(f"<circle cx='{p0[0]}' cy='{p0[1]}' r='3' fill='{col}'/>")
+        s.append(f"<circle cx='{p1[0]}' cy='{p1[1]}' r='5' fill='{col}' stroke='#ffffff' stroke-width='1'/>")
+        n += 1
+    s.append("</svg>")
+    return "".join(s), n
+
+
 def _fase_norm(f):
     return _MIGRA_FASE.get(f, f)
 
@@ -3064,6 +3130,20 @@ if menu == "\U0001F4C8 Statistiche":
             _gioc_sc = sc2.selectbox("Giocatrice", _nomi_rosa_sc, key="scout_gioc")
             _fond_sc = sc3.selectbox("Fondamentale", SCOUT_FOND, key="scout_fond")
 
+            # Zone di partenza/arrivo per ricostruire la DIREZIONE dell'azione.
+            if _fond_sc == "Ricezione":
+                _lab_from, _lab_to = "Battuta avversaria da (zona avv.)", "Ricevo in (mia zona)"
+            elif _fond_sc == "Battuta":
+                _lab_from, _lab_to = "Servo da (mia zona)", "Palla in (zona avv.)"
+            elif _fond_sc == "Attacco":
+                _lab_from, _lab_to = "Attacco da (mia zona)", "Palla in (zona avv.)"
+            else:
+                _lab_from, _lab_to = "Da (zona)", "A (zona)"
+            _zc = st.columns(2)
+            _z_from = _zc[0].selectbox(_lab_from, [1, 2, 3, 4, 5, 6], key="scout_zfrom")
+            _z_to = _zc[1].selectbox(_lab_to, [1, 2, 3, 4, 5, 6], key="scout_zto")
+            st.caption("Zone pallavolo: 4-3-2 sotto rete, 5-6-1 in seconda linea.")
+
             st.markdown("**Esecuzione \u2014 tocca il simbolo:**")
             _bc = st.columns(len(SCOUT_SIMBOLI))
             for _bi, _sym in enumerate(SCOUT_SIMBOLI):
@@ -3072,6 +3152,7 @@ if menu == "\U0001F4C8 Statistiche":
                     st.session_state.scout.append({
                         "data": _data_sc.isoformat(), "giocatrice": _gioc_sc,
                         "fondamentale": _fond_sc, "simbolo": _sym,
+                        "zona_start": int(_z_from), "zona_end": int(_z_to),
                         "ts": datetime.now().strftime("%H:%M:%S"),
                     })
                     save_state()
@@ -3112,6 +3193,21 @@ if menu == "\U0001F4C8 Statistiche":
                         "Pos.%": _m["pos"], "Eff.%": _m["eff"], "Err.%": _m["err"],
                     })
                 st.dataframe(pd.DataFrame(_rows0), hide_index=True, use_container_width=True)
+
+                # ---- Campo con le DIREZIONI dell'azione ----
+                st.markdown("#### \U0001F3D0 Campo \u2014 direzioni di " + _fond_sc)
+                _solo_g = st.checkbox("Mostra solo " + _gioc_sc, value=False, key="scout_solo_g")
+                _ev_campo = [e for e in _oggi_ev
+                             if e.get("fondamentale") == _fond_sc
+                             and (not _solo_g or e.get("giocatrice") == _gioc_sc)]
+                _svg, _nfr = scout_campo_svg(_ev_campo, fondamentale=_fond_sc)
+                st.markdown(_svg, unsafe_allow_html=True)
+                if _nfr == 0:
+                    st.caption("Nessuna direzione registrata per " + _fond_sc +
+                               " in questa giornata. Seleziona le zone e tocca un simbolo.")
+                else:
+                    st.caption("\U0001F3AF " + str(_nfr) + " azioni \u00b7 colore della freccia = "
+                               "qualit\u00e0 dell'esecuzione (verde ottima \u2192 rosso errore).")
 
         # ---------------- STATISTICHE PARTITA ----------------
         with tab_part:
