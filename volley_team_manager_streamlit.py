@@ -328,6 +328,46 @@ st.markdown("""
         transform: skewX(-18deg); pointer-events:none; opacity:0;
     }
     .stButton>button:hover::after { opacity:1; animation: vc-shimmer .8s ease-out; }
+
+    /* ===== Animazioni di entrata + note di esecuzione ===== */
+    @keyframes vc-fade-in-up {
+        0%   { opacity:0; transform: translateY(14px); }
+        100% { opacity:1; transform: translateY(0); }
+    }
+    @keyframes vc-pop-in {
+        0%   { opacity:0; transform: scale(.92); }
+        60%  { opacity:1; transform: scale(1.03); }
+        100% { transform: scale(1); }
+    }
+    @keyframes vc-pulse-dot {
+        0%,100% { box-shadow:0 0 0 0 rgba(255,159,28,0.5); }
+        50%     { box-shadow:0 0 0 6px rgba(255,159,28,0); }
+    }
+    /* i blocchi esercizio entrano con una leggera risalita */
+    .block-seduta { animation: vc-fade-in-up .5s ease both; }
+    /* intestazione di fase: comparsa morbida + accento */
+    .vc-fase-head {
+        margin:14px 0 6px 0; padding:6px 12px; font-size:1.05em; font-weight:800;
+        color:var(--vc-accent); border-left:4px solid var(--vc-accent);
+        background:linear-gradient(90deg, rgba(255,159,28,0.12), rgba(255,159,28,0));
+        border-radius:8px; letter-spacing:.3px; animation: vc-pop-in .45s ease both;
+    }
+    /* nota gi\u00e0 salvata, mostrata dentro il blocco esercizio */
+    .vc-nota-inline {
+        display:inline-block; margin-top:6px; padding:4px 10px; border-radius:8px;
+        background:rgba(255,159,28,0.12); border-left:3px solid var(--vc-accent);
+        color:#ffd9a0; font-size:0.9em; animation: vc-pop-in .4s ease both;
+    }
+    /* etichetta sopra il campo nota (sotto ogni esercizio) */
+    .vc-nota-head {
+        display:flex; align-items:center; gap:8px; margin:2px 0 3px 2px;
+        font-size:0.84em; font-weight:700; color:var(--vc-accent); letter-spacing:.3px;
+        animation: vc-fade-in-up .5s ease both;
+    }
+    .vc-nota-dot {
+        width:9px; height:9px; border-radius:50%; background:var(--vc-accent);
+        display:inline-block; animation: vc-pulse-dot 2.2s ease-in-out infinite;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -2151,15 +2191,33 @@ if menu == "\U0001F4CB Programma Allenamenti":
         for i, e in enumerate(es_list):
             if e["Fase"] != fase_corrente:
                 fase_corrente = e["Fase"]
-                st.markdown(f"#### {icone.get(fase_corrente,'')} {FASI_LABEL.get(fase_corrente, fase_corrente)}")
+                st.markdown(
+                    f"<div class='vc-fase-head'>{icone.get(fase_corrente,'')} "
+                    f"{_html.escape(FASI_LABEL.get(fase_corrente, fase_corrente))}</div>",
+                    unsafe_allow_html=True,
+                )
             dis = disegno_html(e.get("Disegno", ""))
+            _nota_fatta = str(e.get("nota_esecuzione", "")).strip()
+            _nota_html = (
+                f"<br><span class='vc-nota-inline'>\U0001F4DD {_html.escape(_nota_fatta)}</span>"
+                if _nota_fatta else ""
+            )
             st.markdown(
                 f"<div class='block-seduta'><b>{i+1}. {_html.escape(str(e['Nome']))}</b> "
                 f"<span style='color:#ffbf69'>\u00b7 {e['Durata_min']} min \u00b7 {e['Fondamentale']}</span> {badge_livello(e['Livello'])}<br>"
                 f"<span style='color:#c9d6ea'>{_html.escape(str(e['Descrizione']))}</span><br>"
-                f"<span style='color:#7f93b0;font-size:0.9em'>\U0001F501 Variante: {_html.escape(str(e['Varianti']))}</span>{dis}</div>",
+                f"<span style='color:#7f93b0;font-size:0.9em'>\U0001F501 Variante: {_html.escape(str(e['Varianti']))}</span>{dis}{_nota_html}</div>",
                 unsafe_allow_html=True,
             )
+            # Nota grafica sotto l'esercizio: commento dopo l'esecuzione
+            st.markdown(
+                "<div class='vc-nota-head'><span class='vc-nota-dot'></span>"
+                "Nota dopo l'esecuzione</div>", unsafe_allow_html=True)
+            _nota_val = st.text_area(
+                "Nota esecuzione", value=e.get("nota_esecuzione", ""),
+                placeholder="Com'\u00e8 andato? Cosa migliorare, chi ha faticato, variazioni da ricordare...",
+                key=f"nota_ex_{i}", height=70, label_visibility="collapsed")
+            e["nota_esecuzione"] = _nota_val
             with st.expander(f"\u270F\uFE0F Correggi l'esercizio {i+1}"):
                 # Sostituzione dalla libreria
                 csub1, csub2 = st.columns([3, 1])
@@ -2495,10 +2553,18 @@ if menu == "\U0001F5D3\uFE0F Calendario":
                                                key=f"cal_liv_{i}_{j}")
                         cx_desc = st.text_area("Descrizione", value=str(ex.get("Descrizione", "")), key=f"cal_desc_{i}_{j}", height=70)
                         cx_var = st.text_input("Variante", value=str(ex.get("Varianti", "")), key=f"cal_var_{i}_{j}")
+                        st.markdown(
+                            "<div class='vc-nota-head'><span class='vc-nota-dot'></span>"
+                            "Nota dopo l'esecuzione</div>", unsafe_allow_html=True)
+                        cx_nota = st.text_area(
+                            "Nota esecuzione", value=str(ex.get("nota_esecuzione", "")),
+                            placeholder="Com'\u00e8 andato? Cosa migliorare la prossima volta...",
+                            key=f"cal_nota_{i}_{j}", height=70, label_visibility="collapsed")
                         bcal1, bcal2, bcal3, bcal4 = st.columns(4)
                         if bcal1.button("\U0001F4BE Salva", key=f"cal_save_{i}_{j}", use_container_width=True):
                             ex["Nome"] = cx_nome.strip(); ex["Durata_min"] = int(cx_dur); ex["Livello"] = cx_liv
                             ex["Descrizione"] = cx_desc.strip(); ex["Varianti"] = cx_var.strip()
+                            ex["nota_esecuzione"] = cx_nota.strip()
                             _m = _upsert_esercizio_libreria(ex)
                             save_state()
                             st.toast(_m)
