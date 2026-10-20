@@ -953,7 +953,7 @@ def _beep_wav_bytes(freq=880, ms=500, vol=0.5, sr=44100):
     return buf.getvalue()
 
 
-def costruisci_programma(s, ora_inizio="18:00", pausa_sec=20):
+def costruisci_programma(s, ora_inizio="20:30", pausa_sec=20):
     """Espande la seduta in righe con orario di inizio/fine di ogni esercizio e
     inserisce pause acqua/recupero di 20 secondi nei momenti opportuni
     (al cambio di fase e dopo un blocco di lavoro prolungato, mai prima del
@@ -961,7 +961,7 @@ def costruisci_programma(s, ora_inizio="18:00", pausa_sec=20):
     try:
         t = datetime.strptime(str(ora_inizio).strip(), "%H:%M")
     except Exception:
-        t = datetime.strptime("18:00", "%H:%M")
+        t = datetime.strptime("20:30", "%H:%M")
     es = s.get("esercizi", [])
     righe = []
     fase_corr = None
@@ -1006,7 +1006,7 @@ def _draw_court_pdf(pdf, x, y, w, h, disegno=""):
     pdf.set_line_width(0.2)
 
 
-def seduta_pdf_bytes(s, ora_inizio="18:00"):
+def seduta_pdf_bytes(s, ora_inizio="20:30"):
     """Genera il PDF della seduta con orari, pause acqua e campo a fianco di ogni
     esercizio. Richiede fpdf2 (pip install fpdf2); se manca ritorna None."""
     if not _HAS_FPDF:
@@ -1080,7 +1080,7 @@ def seduta_html_stampabile(s):
     tema = st.session_state.get("tema_squadra", TEMA_DEFAULT)
     c1 = tema.get("colore1", "#ff9f1c")
     squadra = _html.escape(tema.get("nome_squadra", "VolleyCoach"))
-    ora_inizio = str(s.get("ora_inizio", "18:00"))
+    ora_inizio = str(s.get("ora_inizio", "20:30"))
     tot = sum(int(e["Durata_min"]) for e in s["esercizi"])
     court_b64 = _court_png_b64()
     prog = costruisci_programma(s, ora_inizio)
@@ -1140,7 +1140,7 @@ def seduta_html_stampabile(s):
     return doc.encode("utf-8")
 
 
-def seduta_foglio_html(s, ora_inizio="18:00"):
+def seduta_foglio_html(s, ora_inizio="20:30"):
     """Vista 'foglio bianco' con font scritto a mano / stampatello per una
     seduta programmata: orario inizio/fine di ogni esercizio, campo di pallavolo
     a fianco e pause acqua/recupero."""
@@ -1376,13 +1376,19 @@ def genera_seduta_multi(obiettivi_list, durata_tot, intensita, n_presenti,
         minuti_fase = budget[fase]
         if fase == "Riscaldamento":
             pool = df[df["Fase"] == "Riscaldamento"]
-            # Il riscaldamento inizia SEMPRE con il lavoro fisico / condizione fisica.
             fisico = pool[(pool["Fondamentale"] == "Fisico") |
                           (pool["Obiettivo"] == "Condizione fisica")]
             altri = pool[~pool.index.isin(fisico.index)]
             cand_f = fisico.to_dict("records"); rng.shuffle(cand_f)
             cand_r = altri.to_dict("records"); rng.shuffle(cand_r)
-            righe = cand_f + cand_r
+            if prevenzione:
+                # Prevenzione attiva (di norma solo il lunedì): il riscaldamento
+                # parte dal lavoro fisico / di condizione fisica (prevenzione infortuni).
+                righe = cand_f + cand_r
+            else:
+                # Senza prevenzione: niente esercizi fisici/prevenzione nel
+                # riscaldamento, solo riscaldamento tecnico (con palla).
+                righe = cand_r if cand_r else cand_f
             pool = pd.DataFrame(righe) if righe else pool
         elif fase == "Sintetica":
             # tecnica individuale: esercizi marcati "Sintetica" oppure esercizi
@@ -2084,9 +2090,12 @@ if menu == "\U0001F4CB Programma Allenamenti":
     with c3:
         durata = st.slider("Durata (min)", 60, 150, 90, step=15)
 
+    # La prevenzione/fisico nel riscaldamento va inclusa SOLO il lunedì.
     prevenzione = st.checkbox("\U0001FA79 Includi prevenzione/fisico nel riscaldamento",
-                              value=True,
-                              help="Il riscaldamento parte sempre con il lavoro fisico/condizione fisica.")
+                              value=(wd == 0),
+                              help="Gli esercizi di prevenzione/fisico nel riscaldamento "
+                                   "sono previsti solo il luned\u00ec. Negli altri giorni il "
+                                   "riscaldamento \u00e8 solo tecnico (con palla).")
     if fase_macro:
         st.caption("\U0001F9E9 Fase macrociclo: **" + str(fase_macro) + "** \u2014 fasi della seduta modulate di conseguenza.")
 
@@ -2457,18 +2466,18 @@ if menu == "\U0001F5D3\uFE0F Calendario":
 
                 # Orario di inizio della seduta (per calcolare gli orari degli esercizi)
                 oc1, oc2 = st.columns([1, 3])
-                _ora_val = str(s.get("ora_inizio", "18:00"))
+                _ora_val = str(s.get("ora_inizio", "20:30"))
                 ora_inizio = oc1.text_input("\U0001F550 Ora inizio", value=_ora_val,
-                                            key=f"orai_{i}", help="Formato HH:MM (es. 18:00). "
+                                            key=f"orai_{i}", help="Formato HH:MM (es. 20:30). "
                                             "Gli orari di ogni esercizio si calcolano da qui.")
                 if oc2.button("\U0001F4BE Salva ora inizio", key=f"saveora_{i}"):
-                    s["ora_inizio"] = ora_inizio.strip() or "18:00"
+                    s["ora_inizio"] = ora_inizio.strip() or "20:30"
                     save_state()
                     st.success("Ora inizio salvata!")
                     st.rerun()
 
                 # Vista "foglio bianco" con font scritto a mano / stampatello
-                st.markdown(seduta_foglio_html(s, ora_inizio=ora_inizio.strip() or "18:00"),
+                st.markdown(seduta_foglio_html(s, ora_inizio=ora_inizio.strip() or "20:30"),
                             unsafe_allow_html=True)
 
                 # --- Correggi gli esercizi anche qui (nel Calendario) ---
@@ -2546,7 +2555,7 @@ if menu == "\U0001F5D3\uFE0F Calendario":
                     key=f"print_{i}",
                     use_container_width=True,
                 )
-                _ora_pdf = str(s.get("ora_inizio", ora_inizio.strip() or "18:00"))
+                _ora_pdf = str(s.get("ora_inizio", ora_inizio.strip() or "20:30"))
                 _pdf = seduta_pdf_bytes(s, ora_inizio=_ora_pdf) if _HAS_FPDF else None
                 if _pdf is not None:
                     cbn4.download_button(
