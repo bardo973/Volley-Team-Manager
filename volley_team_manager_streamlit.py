@@ -3292,6 +3292,100 @@ if menu == "\U0001F4C8 Statistiche":
                 _sel_g = st.selectbox("Scegli la partita", _gare_s, format_func=_lab_g)
                 st.caption("\u2705 = statistiche gi\u00e0 inserite \u00b7 \u2795 = ancora da compilare")
                 if _sel_g is not None:
+                    _nomi_rosa_s = [x["Nome"] for x in st.session_state.rosa]
+
+                    # ============ PUNTEGGIO LIVE con TASTI RAPIDI ============
+                    _gi = _gare_s.index(_sel_g)
+                    _st_live = _sel_g.setdefault("stats", {})
+                    _gd_live = _st_live.setdefault("giocatrici", {})
+                    _avv_tot = int(_st_live.get("avv_punti", 0) or 0)
+                    _noi_tot = sum(int(v.get("punti", 0) or 0) for v in _gd_live.values())
+
+                    def _add_pt(_nome, _tipo=None):
+                        d = _gd_live.setdefault(_nome, {})
+                        d["punti"] = int(d.get("punti", 0) or 0) + 1
+                        if _tipo in ("attacco", "ace", "muri"):
+                            d[_tipo] = int(d.get(_tipo, 0) or 0) + 1
+                        save_state()
+                        st.rerun()
+
+                    def _sub_pt(_nome):
+                        d = _gd_live.setdefault(_nome, {})
+                        if int(d.get("punti", 0) or 0) > 0:
+                            d["punti"] = int(d.get("punti", 0) or 0) - 1
+                            save_state()
+                            st.rerun()
+
+                    def _avv_pt(_delta):
+                        _new = max(0, int(_st_live.get("avv_punti", 0) or 0) + _delta)
+                        _st_live["avv_punti"] = _new
+                        save_state()
+                        st.rerun()
+
+                    st.markdown(
+                        "<div style='display:flex;justify-content:center;gap:24px;align-items:center;"
+                        "background:var(--vc-card);border:1px solid var(--vc-border);border-radius:16px;"
+                        "padding:14px;margin:6px 0'>"
+                        "<div style='text-align:center'><div style='color:var(--vc-muted);font-weight:600'>NOI</div>"
+                        "<div style='font-size:2.6rem;font-weight:800;color:#2ecc71'>" + str(_noi_tot) + "</div></div>"
+                        "<div style='font-size:2rem;color:var(--vc-muted)'>\u2013</div>"
+                        "<div style='text-align:center'><div style='color:var(--vc-muted);font-weight:600'>" +
+                        _html.escape((_sel_g.get("avversario", "") or "AVVERSARIO").upper()) + "</div>"
+                        "<div style='font-size:2.6rem;font-weight:800;color:#e74c3c'>" + str(_avv_tot) + "</div></div>"
+                        "</div>", unsafe_allow_html=True)
+
+                    with st.expander("\u26A1 Punteggio live \u2014 tasti rapidi", expanded=False):
+                        _nomi_live = [n for n in (_sel_g.get("convocate") or []) if n in _nomi_rosa_s] or _nomi_rosa_s
+                        if st.session_state.get("part_gioc") not in _nomi_live and _nomi_live:
+                            st.session_state.part_gioc = _nomi_live[0]
+                        st.markdown("**Giocatrice** \u2014 selezionata: **" +
+                                    str(st.session_state.get("part_gioc", "\u2014")) + "**")
+                        _rosa_map = {x["Nome"]: x for x in st.session_state.rosa}
+                        _per_riga = 4
+                        for _i0 in range(0, len(_nomi_live), _per_riga):
+                            _fetta = _nomi_live[_i0:_i0 + _per_riga]
+                            _pc = st.columns(len(_fetta))
+                            for _j, _nm in enumerate(_fetta):
+                                _gm = _rosa_map.get(_nm, {})
+                                _cogn = _nm.split()[-1] if _nm.strip() else _nm
+                                _selp = (st.session_state.get("part_gioc") == _nm)
+                                _pts = int(_gd_live.get(_nm, {}).get("punti", 0) or 0)
+                                if _pc[_j].button(
+                                        ("\u2705 " if _selp else "") + "#" + str(_gm.get("Numero", "")) +
+                                        " " + _cogn + "  (" + str(_pts) + ")",
+                                        key="pbtn_" + str(_gi) + "_" + str(_i0 + _j),
+                                        type=("primary" if _selp else "secondary"),
+                                        use_container_width=True):
+                                    st.session_state.part_gioc = _nm
+                                    st.rerun()
+
+                        _cur = st.session_state.get("part_gioc")
+                        if _cur:
+                            st.markdown("**Punto di " + _html.escape(_cur) + ":**")
+                            _ac = st.columns(4)
+                            if _ac[0].button("\U0001F3D0 +1 Attacco", key="pt_att_" + str(_gi), use_container_width=True):
+                                _add_pt(_cur, "attacco")
+                            if _ac[1].button("\U0001F3AF +1 Ace", key="pt_ace_" + str(_gi), use_container_width=True):
+                                _add_pt(_cur, "ace")
+                            if _ac[2].button("\U0001F9F1 +1 Muro", key="pt_mur_" + str(_gi), use_container_width=True):
+                                _add_pt(_cur, "muri")
+                            if _ac[3].button("\u2795 +1 Punto", key="pt_gen_" + str(_gi), use_container_width=True):
+                                _add_pt(_cur, None)
+                            if st.button("\u2796 -1 (correggi) " + _cur, key="pt_sub_" + str(_gi),
+                                         use_container_width=True):
+                                _sub_pt(_cur)
+
+                        st.markdown("**Punto avversario:**")
+                        _vc = st.columns(2)
+                        if _vc[0].button("\u2795 +1 Punto avversario", key="avv_add_" + str(_gi),
+                                         use_container_width=True):
+                            _avv_pt(1)
+                        if _vc[1].button("\u2796 -1 avversario (correggi)", key="avv_sub_" + str(_gi),
+                                         use_container_width=True):
+                            _avv_pt(-1)
+                        st.caption("I punti aggiunti qui finiscono subito nelle statistiche della partita "
+                                   "(attacco/ace/muro incrementano anche i punti totali).")
+
                     _stats = _sel_g.get("stats") or {}
                     st.markdown("#### \U0001F522 Punteggio set per set")
                     _set_txt = st.text_input("Risultato set (es. 25-20, 23-25, 25-18)",
