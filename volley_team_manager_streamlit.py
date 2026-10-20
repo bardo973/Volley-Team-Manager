@@ -3139,9 +3139,35 @@ if menu == "\U0001F4C8 Statistiche":
                 _lab_from, _lab_to = "Attacco da (mia zona)", "Palla in (zona avv.)"
             else:
                 _lab_from, _lab_to = "Da (zona)", "A (zona)"
+            # Selezione zona con TASTI veloci (niente menu a tendina).
+            # Layout come in campo: prima linea 4-3-2, seconda linea 5-6-1.
+            if "scout_zf" not in st.session_state:
+                st.session_state.scout_zf = 1
+            if "scout_zt" not in st.session_state:
+                st.session_state.scout_zt = 1
+
+            def _scelta_zona(_titolo, _statekey):
+                _val = st.session_state[_statekey]
+                st.markdown("**" + _titolo + "** \u2014 zona selezionata: **" + str(_val) + "**")
+                for _riga in ([4, 3, 2], [5, 6, 1]):
+                    _cols = st.columns(3)
+                    for _i, _z in enumerate(_riga):
+                        _sel = (_val == _z)
+                        if _cols[_i].button(
+                                ("\u2705 " if _sel else "") + str(_z),
+                                key="zbtn_" + _statekey + "_" + str(_z),
+                                type=("primary" if _sel else "secondary"),
+                                use_container_width=True):
+                            st.session_state[_statekey] = _z
+                            st.rerun()
+
             _zc = st.columns(2)
-            _z_from = _zc[0].selectbox(_lab_from, [1, 2, 3, 4, 5, 6], key="scout_zfrom")
-            _z_to = _zc[1].selectbox(_lab_to, [1, 2, 3, 4, 5, 6], key="scout_zto")
+            with _zc[0]:
+                _scelta_zona(_lab_from, "scout_zf")
+            with _zc[1]:
+                _scelta_zona(_lab_to, "scout_zt")
+            _z_from = st.session_state.scout_zf
+            _z_to = st.session_state.scout_zt
             st.caption("Zone pallavolo: 4-3-2 sotto rete, 5-6-1 in seconda linea.")
 
             st.markdown("**Esecuzione \u2014 tocca il simbolo:**")
