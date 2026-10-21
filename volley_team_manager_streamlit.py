@@ -471,6 +471,40 @@ st.markdown("""
         width:9px; height:9px; border-radius:50%; background:var(--vc-accent);
         display:inline-block; animation: vc-pulse-dot 2.2s ease-in-out infinite;
     }
+
+    /* ===== Sfondo "aurora" animato: luci soffuse che si muovono lentamente ===== */
+    @keyframes vc-aurora {
+        0%   { transform: translate3d(-4%, -3%, 0) scale(1);   }
+        33%  { transform: translate3d(3%, 2%, 0)  scale(1.08); }
+        66%  { transform: translate3d(2%, -4%, 0) scale(1.04); }
+        100% { transform: translate3d(-4%, -3%, 0) scale(1);   }
+    }
+    .stApp::before {
+        content:""; position:fixed; inset:-20% -10% -10% -10%; z-index:0; pointer-events:none;
+        background:
+            radial-gradient(42% 42% at 18% 22%, rgba(255,159,28,0.16), transparent 70%),
+            radial-gradient(46% 46% at 82% 18%, rgba(45,110,255,0.16), transparent 70%),
+            radial-gradient(40% 40% at 60% 88%, rgba(255,191,105,0.12), transparent 72%),
+            radial-gradient(38% 38% at 30% 80%, rgba(90,160,255,0.10), transparent 72%);
+        filter: blur(30px);
+        animation: vc-aurora 26s ease-in-out infinite;
+    }
+    /* tiene i contenuti sopra l'aurora, senza toccare la leggibilità del testo */
+    .stApp > div { position:relative; z-index:1; }
+
+    /* ===== Pallone da pallavolo che fluttua nell'intestazione (hero) ===== */
+    @keyframes vc-float-ball {
+        0%,100% { transform: translateY(0) rotate(0deg); }
+        50%     { transform: translateY(-12px) rotate(12deg); }
+    }
+    .vc-hero { padding-right:92px; }
+    .vc-hero .vc-hero-ball {
+        position:absolute; right:22px; top:50%; margin-top:-26px;
+        font-size:3.2rem; line-height:1; opacity:.5; z-index:1;
+        filter: drop-shadow(0 6px 14px rgba(0,0,0,0.45));
+        animation: vc-float-ball 5.5s ease-in-out infinite;
+    }
+    @media (max-width:640px){ .vc-hero .vc-hero-ball{ display:none; } .vc-hero{ padding-right:26px; } }
 </style>
 """, unsafe_allow_html=True)
 
@@ -1826,7 +1860,7 @@ if menu == "\U0001F3E0 Dashboard":
     _nome_h = _html.escape(_th.get("nome_squadra") or "VolleyCoach Manager")
     _sotto_h = _html.escape(_th.get("sottotitolo") or "Il tuo pannello di controllo per la squadra")
     st.markdown(
-        "<div class='vc-hero'><h1>" + _logo_html + _nome_h + "</h1>"
+        "<div class='vc-hero'><span class='vc-hero-ball'>\U0001F3D0</span><h1>" + _logo_html + _nome_h + "</h1>"
         "<p>" + _sotto_h + "</p></div>",
         unsafe_allow_html=True,
     )
