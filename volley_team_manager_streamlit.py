@@ -116,123 +116,6 @@ FASI_ICONA = {
 # Migrazione dalle vecchie fasi (4) alla nuova struttura (5)
 _MIGRA_FASE = {"Situazionale": "Globale"}
 
-# Statistiche partita: campi numerici inseriti a mano per ogni giocatrice.
-# (chiave_interna, etichetta mostrata nella tabella)
-STAT_CAMPI = [
-    ("set_giocati", "Set giocati"),
-    ("punti", "Punti totali"),
-    ("attacco", "Punti attacco"),
-    ("ace", "Ace"),
-    ("muri", "Muri punto"),
-    ("errori", "Errori"),
-    ("ric_pos", "Ricezioni +"),
-]
-# Fondamentali valutabili nella scheda giocatrice (voto da 1 a 5)
-FOND_VOTO = ["Battuta", "Ricezione", "Palleggio", "Attacco", "Muro", "Difesa"]
-
-# ---- Scout allenamento ------------------------------------------------------
-# Ogni esecuzione di un gesto tecnico viene valutata con i simboli classici del
-# volley. Un evento scout = (data, giocatrice, fondamentale, simbolo).
-SCOUT_FOND = ["Battuta", "Ricezione", "Palleggio", "Attacco", "Muro", "Difesa"]
-SCOUT_SIMBOLI = ["#", "+", "-", "/", "="]
-SCOUT_INFO = {
-    "#": {"label": "Perfetto / punto", "color": "#2ecc71"},
-    "+": {"label": "Positivo / buono", "color": "#8fe3a0"},
-    "-": {"label": "Negativo / in difficolt\u00e0", "color": "#f4c257"},
-    "/": {"label": "Scontato / sballata", "color": "#e8873b"},
-    "=": {"label": "Errore / punto perso", "color": "#e74c3c"},
-}
-
-
-def scout_metriche(eventi):
-    """Calcola le metriche standard di scouting da una lista di simboli.
-    - tot: numero di esecuzioni registrate
-    - conteggi: quante volte ogni simbolo
-    - pos (Positivit\u00e0%)  = (# + +) / tot
-    - perf (Perfezione%)  = # / tot
-    - err (Errori%)       = = / tot
-    - eff (Efficienza%)   = (# - = - /) / tot  (stile DataVolley)
-    """
-    c = {s: 0 for s in SCOUT_SIMBOLI}
-    for s in eventi:
-        if s in c:
-            c[s] += 1
-    tot = sum(c.values())
-    if tot == 0:
-        return {"tot": 0, "conteggi": c, "pos": 0.0, "perf": 0.0, "err": 0.0, "eff": 0.0}
-    pos = (c["#"] + c["+"]) / tot * 100
-    perf = c["#"] / tot * 100
-    err = c["="] / tot * 100
-    eff = (c["#"] - c["="] - c["/"]) / tot * 100
-    return {"tot": tot, "conteggi": c, "pos": round(pos, 1),
-            "perf": round(perf, 1), "err": round(err, 1), "eff": round(eff, 1)}
-
-
-# Coordinate (in viewBox 320x620) delle 6 zone per met\u00e0 campo.
-# Met\u00e0 in basso = la nostra; met\u00e0 in alto = avversari. Rete a y=310.
-SCOUT_ZONE_NOI = {4: (67, 360), 3: (160, 360), 2: (253, 360),
-                  5: (67, 550), 6: (160, 550), 1: (253, 550)}
-SCOUT_ZONE_AVV = {4: (67, 260), 3: (160, 260), 2: (253, 260),
-                  5: (67, 70), 6: (160, 70), 1: (253, 70)}
-
-
-def _scout_lati(fondamentale):
-    """Da quale lato parte e dove arriva l'azione, per disegnare le frecce."""
-    if fondamentale == "Ricezione":
-        return ("avv", "noi")       # la battuta avversaria arriva nel nostro campo
-    if fondamentale in ("Battuta", "Attacco"):
-        return ("noi", "avv")       # noi mandiamo la palla di l\u00e0
-    return ("noi", "noi")
-
-
-def scout_campo_svg(eventi, fondamentale=None):
-    """Disegna un campo di pallavolo (SVG) con le direzioni registrate:
-    una freccia per ogni azione, dalla zona di partenza a quella di arrivo,
-    colorata in base al simbolo di esecuzione. Ritorna (svg, n_frecce)."""
-    s = ["<svg width='100%' viewBox='0 0 320 620' "
-         "style='max-width:360px;display:block;margin:6px auto' "
-         "xmlns='http://www.w3.org/2000/svg'>"]
-    # campo
-    s.append("<rect x='20' y='20' width='280' height='580' fill='#e3954f' "
-             "stroke='#ffffff' stroke-width='3'/>")
-    # linee dei 3 metri (attacco)
-    s.append("<line x1='20' y1='213' x2='300' y2='213' stroke='#ffffff' stroke-width='2'/>")
-    s.append("<line x1='20' y1='407' x2='300' y2='407' stroke='#ffffff' stroke-width='2'/>")
-    # separatori di colonna
-    s.append("<line x1='113' y1='20' x2='113' y2='600' stroke='#ffffff' stroke-width='1' opacity='0.45'/>")
-    s.append("<line x1='207' y1='20' x2='207' y2='600' stroke='#ffffff' stroke-width='1' opacity='0.45'/>")
-    # rete
-    s.append("<rect x='16' y='306' width='288' height='8' fill='#1f2a44'/>")
-    s.append("<text x='160' y='303' fill='#1f2a44' font-size='10' text-anchor='middle' font-weight='bold'>RETE</text>")
-    s.append("<text x='26' y='36' fill='#5a3410' font-size='10' font-weight='bold'>AVVERSARI</text>")
-    s.append("<text x='26' y='592' fill='#5a3410' font-size='10' font-weight='bold'>NOI</text>")
-    for z, (x, y) in SCOUT_ZONE_NOI.items():
-        s.append(f"<text x='{x}' y='{y-16}' fill='#7a4a16' font-size='11' text-anchor='middle' font-weight='bold'>{z}</text>")
-    for z, (x, y) in SCOUT_ZONE_AVV.items():
-        s.append(f"<text x='{x}' y='{y+22}' fill='#7a4a16' font-size='11' text-anchor='middle' font-weight='bold'>{z}</text>")
-    n = 0
-    for e in eventi:
-        f = e.get("fondamentale")
-        if fondamentale and f != fondamentale:
-            continue
-        zs = e.get("zona_start")
-        ze = e.get("zona_end")
-        if not zs or not ze:
-            continue
-        lat_s, lat_e = _scout_lati(f)
-        p0 = (SCOUT_ZONE_NOI if lat_s == "noi" else SCOUT_ZONE_AVV).get(int(zs))
-        p1 = (SCOUT_ZONE_NOI if lat_e == "noi" else SCOUT_ZONE_AVV).get(int(ze))
-        if not p0 or not p1:
-            continue
-        col = SCOUT_INFO.get(e.get("simbolo"), {}).get("color", "#ffffff")
-        s.append(f"<line x1='{p0[0]}' y1='{p0[1]}' x2='{p1[0]}' y2='{p1[1]}' "
-                 f"stroke='{col}' stroke-width='2.5' opacity='0.85'/>")
-        s.append(f"<circle cx='{p0[0]}' cy='{p0[1]}' r='3' fill='{col}'/>")
-        s.append(f"<circle cx='{p1[0]}' cy='{p1[1]}' r='5' fill='{col}' stroke='#ffffff' stroke-width='1'/>")
-        n += 1
-    s.append("</svg>")
-    return "".join(s), n
-
 
 def _fase_norm(f):
     return _MIGRA_FASE.get(f, f)
@@ -431,80 +314,6 @@ st.markdown("""
         transform: skewX(-18deg); pointer-events:none; opacity:0;
     }
     .stButton>button:hover::after { opacity:1; animation: vc-shimmer .8s ease-out; }
-
-    /* ===== Animazioni di entrata + note di esecuzione ===== */
-    @keyframes vc-fade-in-up {
-        0%   { opacity:0; transform: translateY(14px); }
-        100% { opacity:1; transform: translateY(0); }
-    }
-    @keyframes vc-pop-in {
-        0%   { opacity:0; transform: scale(.92); }
-        60%  { opacity:1; transform: scale(1.03); }
-        100% { transform: scale(1); }
-    }
-    @keyframes vc-pulse-dot {
-        0%,100% { box-shadow:0 0 0 0 rgba(255,159,28,0.5); }
-        50%     { box-shadow:0 0 0 6px rgba(255,159,28,0); }
-    }
-    /* i blocchi esercizio entrano con una leggera risalita */
-    .block-seduta { animation: vc-fade-in-up .5s ease both; }
-    /* intestazione di fase: comparsa morbida + accento */
-    .vc-fase-head {
-        margin:14px 0 6px 0; padding:6px 12px; font-size:1.05em; font-weight:800;
-        color:var(--vc-accent); border-left:4px solid var(--vc-accent);
-        background:linear-gradient(90deg, rgba(255,159,28,0.12), rgba(255,159,28,0));
-        border-radius:8px; letter-spacing:.3px; animation: vc-pop-in .45s ease both;
-    }
-    /* nota gi\u00e0 salvata, mostrata dentro il blocco esercizio */
-    .vc-nota-inline {
-        display:inline-block; margin-top:6px; padding:4px 10px; border-radius:8px;
-        background:rgba(255,159,28,0.12); border-left:3px solid var(--vc-accent);
-        color:#ffd9a0; font-size:0.9em; animation: vc-pop-in .4s ease both;
-    }
-    /* etichetta sopra il campo nota (sotto ogni esercizio) */
-    .vc-nota-head {
-        display:flex; align-items:center; gap:8px; margin:2px 0 3px 2px;
-        font-size:0.84em; font-weight:700; color:var(--vc-accent); letter-spacing:.3px;
-        animation: vc-fade-in-up .5s ease both;
-    }
-    .vc-nota-dot {
-        width:9px; height:9px; border-radius:50%; background:var(--vc-accent);
-        display:inline-block; animation: vc-pulse-dot 2.2s ease-in-out infinite;
-    }
-
-    /* ===== Sfondo "aurora" animato: luci soffuse che si muovono lentamente ===== */
-    @keyframes vc-aurora {
-        0%   { transform: translate3d(-4%, -3%, 0) scale(1);   }
-        33%  { transform: translate3d(3%, 2%, 0)  scale(1.08); }
-        66%  { transform: translate3d(2%, -4%, 0) scale(1.04); }
-        100% { transform: translate3d(-4%, -3%, 0) scale(1);   }
-    }
-    .stApp::before {
-        content:""; position:fixed; inset:-20% -10% -10% -10%; z-index:0; pointer-events:none;
-        background:
-            radial-gradient(42% 42% at 18% 22%, rgba(255,159,28,0.16), transparent 70%),
-            radial-gradient(46% 46% at 82% 18%, rgba(45,110,255,0.16), transparent 70%),
-            radial-gradient(40% 40% at 60% 88%, rgba(255,191,105,0.12), transparent 72%),
-            radial-gradient(38% 38% at 30% 80%, rgba(90,160,255,0.10), transparent 72%);
-        filter: blur(30px);
-        animation: vc-aurora 26s ease-in-out infinite;
-    }
-    /* tiene i contenuti sopra l'aurora, senza toccare la leggibilità del testo */
-    .stApp > div { position:relative; z-index:1; }
-
-    /* ===== Pallone da pallavolo che fluttua nell'intestazione (hero) ===== */
-    @keyframes vc-float-ball {
-        0%,100% { transform: translateY(0) rotate(0deg); }
-        50%     { transform: translateY(-12px) rotate(12deg); }
-    }
-    .vc-hero { padding-right:92px; }
-    .vc-hero .vc-hero-ball {
-        position:absolute; right:22px; top:50%; margin-top:-26px;
-        font-size:3.2rem; line-height:1; opacity:.5; z-index:1;
-        filter: drop-shadow(0 6px 14px rgba(0,0,0,0.45));
-        animation: vc-float-ball 5.5s ease-in-out infinite;
-    }
-    @media (max-width:640px){ .vc-hero .vc-hero-ball{ display:none; } .vc-hero{ padding-right:26px; } }
 </style>
 """, unsafe_allow_html=True)
 
@@ -608,7 +417,6 @@ def _state_dict():
         "schema_settimanale": st.session_state.get("schema_settimanale", dict(SCHEMA_DEFAULT)),
         "tema_squadra": st.session_state.get("tema_squadra", dict(TEMA_DEFAULT)),
         "gare": st.session_state.get("gare", []),
-        "scout": st.session_state.get("scout", []),
         "versione": 5,
     }
 
@@ -702,7 +510,6 @@ def _apply_data(data):
     else:
         st.session_state.tema_squadra = dict(TEMA_DEFAULT)
     st.session_state.gare = data.get("gare", [])
-    st.session_state.scout = data.get("scout", [])
 
 
 def load_state():
@@ -874,7 +681,6 @@ if "initialized" not in st.session_state:
     st.session_state.schema_settimanale = dict(SCHEMA_DEFAULT)
     st.session_state.tema_squadra = dict(TEMA_DEFAULT)
     st.session_state.gare = []
-    st.session_state.scout = []
     load_state()
     # assicura comunque la colonna Disegno
     if "Disegno" not in st.session_state.esercizi.columns:
@@ -916,17 +722,6 @@ if "tema_squadra" not in st.session_state:
     st.session_state.tema_squadra = dict(TEMA_DEFAULT)
 if "gare" not in st.session_state:
     st.session_state.gare = []
-if "scout" not in st.session_state:
-    st.session_state.scout = []
-
-# Stato dell'Allenamento Live (timer a schermo)
-for _lk, _lv in {
-    "live_running": False, "live_paused": False, "live_seq": [],
-    "live_idx": 0, "live_remaining": 0, "live_beeped10": False,
-    "live_sig": "", "_beep_now": False,
-}.items():
-    if _lk not in st.session_state:
-        st.session_state[_lk] = _lv
 
 # Applica il TEMA della squadra: sovrascrive i colori accento del CSS base
 # con i colori scelti dall'utente (coerenti in badge, pulsanti, header, grafici).
@@ -1106,36 +901,7 @@ def _court_png_b64():
     return base64.b64encode(buf.getvalue()).decode("ascii")
 
 
-@st.cache_data(show_spinner=False)
-def _beep_wav_bytes(freq=880, ms=500, vol=0.5, sr=44100):
-    """Genera un breve 'beep' (onda sinusoidale) come file WAV in memoria.
-    Tutto offline, senza file o librerie esterne: serve per l'avviso sonoro
-    dell'Allenamento Live."""
-    import math
-    import struct
-    import wave
-    n = int(sr * ms / 1000)
-    fade = int(sr * 0.01)  # 10 ms di dissolvenza per evitare il 'click'
-    frames = bytearray()
-    for i in range(n):
-        env = 1.0
-        if i < fade:
-            env = i / fade
-        elif i > n - fade:
-            env = max(0.0, (n - i) / fade)
-        val = int(vol * env * 32767 * math.sin(2 * math.pi * freq * i / sr))
-        frames += struct.pack("<h", val)
-    buf = io.BytesIO()
-    w = wave.open(buf, "wb")
-    w.setnchannels(1)
-    w.setsampwidth(2)
-    w.setframerate(sr)
-    w.writeframes(bytes(frames))
-    w.close()
-    return buf.getvalue()
-
-
-def costruisci_programma(s, ora_inizio="20:30", pausa_sec=20):
+def costruisci_programma(s, ora_inizio="18:00", pausa_sec=20):
     """Espande la seduta in righe con orario di inizio/fine di ogni esercizio e
     inserisce pause acqua/recupero di 20 secondi nei momenti opportuni
     (al cambio di fase e dopo un blocco di lavoro prolungato, mai prima del
@@ -1143,7 +909,7 @@ def costruisci_programma(s, ora_inizio="20:30", pausa_sec=20):
     try:
         t = datetime.strptime(str(ora_inizio).strip(), "%H:%M")
     except Exception:
-        t = datetime.strptime("20:30", "%H:%M")
+        t = datetime.strptime("18:00", "%H:%M")
     es = s.get("esercizi", [])
     righe = []
     fase_corr = None
@@ -1188,7 +954,7 @@ def _draw_court_pdf(pdf, x, y, w, h, disegno=""):
     pdf.set_line_width(0.2)
 
 
-def seduta_pdf_bytes(s, ora_inizio="20:30"):
+def seduta_pdf_bytes(s, ora_inizio="18:00"):
     """Genera il PDF della seduta con orari, pause acqua e campo a fianco di ogni
     esercizio. Richiede fpdf2 (pip install fpdf2); se manca ritorna None."""
     if not _HAS_FPDF:
@@ -1262,7 +1028,7 @@ def seduta_html_stampabile(s):
     tema = st.session_state.get("tema_squadra", TEMA_DEFAULT)
     c1 = tema.get("colore1", "#ff9f1c")
     squadra = _html.escape(tema.get("nome_squadra", "VolleyCoach"))
-    ora_inizio = str(s.get("ora_inizio", "20:30"))
+    ora_inizio = str(s.get("ora_inizio", "18:00"))
     tot = sum(int(e["Durata_min"]) for e in s["esercizi"])
     court_b64 = _court_png_b64()
     prog = costruisci_programma(s, ora_inizio)
@@ -1322,7 +1088,7 @@ def seduta_html_stampabile(s):
     return doc.encode("utf-8")
 
 
-def seduta_foglio_html(s, ora_inizio="20:30"):
+def seduta_foglio_html(s, ora_inizio="18:00"):
     """Vista 'foglio bianco' con font scritto a mano / stampatello per una
     seduta programmata: orario inizio/fine di ogni esercizio, campo di pallavolo
     a fianco e pause acqua/recupero."""
@@ -1558,19 +1324,13 @@ def genera_seduta_multi(obiettivi_list, durata_tot, intensita, n_presenti,
         minuti_fase = budget[fase]
         if fase == "Riscaldamento":
             pool = df[df["Fase"] == "Riscaldamento"]
+            # Il riscaldamento inizia SEMPRE con il lavoro fisico / condizione fisica.
             fisico = pool[(pool["Fondamentale"] == "Fisico") |
                           (pool["Obiettivo"] == "Condizione fisica")]
             altri = pool[~pool.index.isin(fisico.index)]
             cand_f = fisico.to_dict("records"); rng.shuffle(cand_f)
             cand_r = altri.to_dict("records"); rng.shuffle(cand_r)
-            if prevenzione:
-                # Prevenzione attiva (di norma solo il lunedì): il riscaldamento
-                # parte dal lavoro fisico / di condizione fisica (prevenzione infortuni).
-                righe = cand_f + cand_r
-            else:
-                # Senza prevenzione: niente esercizi fisici/prevenzione nel
-                # riscaldamento, solo riscaldamento tecnico (con palla).
-                righe = cand_r if cand_r else cand_f
+            righe = cand_f + cand_r
             pool = pd.DataFrame(righe) if righe else pool
         elif fase == "Sintetica":
             # tecnica individuale: esercizi marcati "Sintetica" oppure esercizi
@@ -1844,8 +1604,8 @@ with st.sidebar:
 # ============================================================
 menu = st.radio(
     "",
-    ["\U0001F3E0 Dashboard", "\U0001F465 Rosa", "\U0001F9E9 Periodizzazione", "\U0001F4CB Programma Allenamenti", "\u23F1\uFE0F Live",
-     "\U0001F4DA Libreria Esercizi", "\U0001F310 Esercizi Online", "\U0001F5D3\uFE0F Calendario", "\U0001F3C6 Gare", "\U0001F4C8 Statistiche", "\U0001F4CA Presenze"],
+    ["\U0001F3E0 Dashboard", "\U0001F465 Rosa", "\U0001F9E9 Periodizzazione", "\U0001F4CB Programma Allenamenti",
+     "\U0001F4DA Libreria Esercizi", "\U0001F310 Esercizi Online", "\U0001F5D3\uFE0F Calendario", "\U0001F3C6 Gare", "\U0001F4CA Presenze"],
     horizontal=True,
     label_visibility="collapsed",
 )
@@ -1860,7 +1620,7 @@ if menu == "\U0001F3E0 Dashboard":
     _nome_h = _html.escape(_th.get("nome_squadra") or "VolleyCoach Manager")
     _sotto_h = _html.escape(_th.get("sottotitolo") or "Il tuo pannello di controllo per la squadra")
     st.markdown(
-        "<div class='vc-hero'><span class='vc-hero-ball'>\U0001F3D0</span><h1>" + _logo_html + _nome_h + "</h1>"
+        "<div class='vc-hero'><h1>" + _logo_html + _nome_h + "</h1>"
         "<p>" + _sotto_h + "</p></div>",
         unsafe_allow_html=True,
     )
@@ -2272,12 +2032,9 @@ if menu == "\U0001F4CB Programma Allenamenti":
     with c3:
         durata = st.slider("Durata (min)", 60, 150, 90, step=15)
 
-    # La prevenzione/fisico nel riscaldamento va inclusa SOLO il lunedì.
     prevenzione = st.checkbox("\U0001FA79 Includi prevenzione/fisico nel riscaldamento",
-                              value=(wd == 0),
-                              help="Gli esercizi di prevenzione/fisico nel riscaldamento "
-                                   "sono previsti solo il luned\u00ec. Negli altri giorni il "
-                                   "riscaldamento \u00e8 solo tecnico (con palla).")
+                              value=True,
+                              help="Il riscaldamento parte sempre con il lavoro fisico/condizione fisica.")
     if fase_macro:
         st.caption("\U0001F9E9 Fase macrociclo: **" + str(fase_macro) + "** \u2014 fasi della seduta modulate di conseguenza.")
 
@@ -2333,33 +2090,15 @@ if menu == "\U0001F4CB Programma Allenamenti":
         for i, e in enumerate(es_list):
             if e["Fase"] != fase_corrente:
                 fase_corrente = e["Fase"]
-                st.markdown(
-                    f"<div class='vc-fase-head'>{icone.get(fase_corrente,'')} "
-                    f"{_html.escape(FASI_LABEL.get(fase_corrente, fase_corrente))}</div>",
-                    unsafe_allow_html=True,
-                )
+                st.markdown(f"#### {icone.get(fase_corrente,'')} {FASI_LABEL.get(fase_corrente, fase_corrente)}")
             dis = disegno_html(e.get("Disegno", ""))
-            _nota_fatta = str(e.get("nota_esecuzione", "")).strip()
-            _nota_html = (
-                f"<br><span class='vc-nota-inline'>\U0001F4DD {_html.escape(_nota_fatta)}</span>"
-                if _nota_fatta else ""
-            )
             st.markdown(
                 f"<div class='block-seduta'><b>{i+1}. {_html.escape(str(e['Nome']))}</b> "
                 f"<span style='color:#ffbf69'>\u00b7 {e['Durata_min']} min \u00b7 {e['Fondamentale']}</span> {badge_livello(e['Livello'])}<br>"
                 f"<span style='color:#c9d6ea'>{_html.escape(str(e['Descrizione']))}</span><br>"
-                f"<span style='color:#7f93b0;font-size:0.9em'>\U0001F501 Variante: {_html.escape(str(e['Varianti']))}</span>{dis}{_nota_html}</div>",
+                f"<span style='color:#7f93b0;font-size:0.9em'>\U0001F501 Variante: {_html.escape(str(e['Varianti']))}</span>{dis}</div>",
                 unsafe_allow_html=True,
             )
-            # Nota grafica sotto l'esercizio: commento dopo l'esecuzione
-            st.markdown(
-                "<div class='vc-nota-head'><span class='vc-nota-dot'></span>"
-                "Nota dopo l'esecuzione</div>", unsafe_allow_html=True)
-            _nota_val = st.text_area(
-                "Nota esecuzione", value=e.get("nota_esecuzione", ""),
-                placeholder="Com'\u00e8 andato? Cosa migliorare, chi ha faticato, variazioni da ricordare...",
-                key=f"nota_ex_{i}", height=70, label_visibility="collapsed")
-            e["nota_esecuzione"] = _nota_val
             with st.expander(f"\u270F\uFE0F Correggi l'esercizio {i+1}"):
                 # Sostituzione dalla libreria
                 csub1, csub2 = st.columns([3, 1])
@@ -2666,18 +2405,18 @@ if menu == "\U0001F5D3\uFE0F Calendario":
 
                 # Orario di inizio della seduta (per calcolare gli orari degli esercizi)
                 oc1, oc2 = st.columns([1, 3])
-                _ora_val = str(s.get("ora_inizio", "20:30"))
+                _ora_val = str(s.get("ora_inizio", "18:00"))
                 ora_inizio = oc1.text_input("\U0001F550 Ora inizio", value=_ora_val,
-                                            key=f"orai_{i}", help="Formato HH:MM (es. 20:30). "
+                                            key=f"orai_{i}", help="Formato HH:MM (es. 18:00). "
                                             "Gli orari di ogni esercizio si calcolano da qui.")
                 if oc2.button("\U0001F4BE Salva ora inizio", key=f"saveora_{i}"):
-                    s["ora_inizio"] = ora_inizio.strip() or "20:30"
+                    s["ora_inizio"] = ora_inizio.strip() or "18:00"
                     save_state()
                     st.success("Ora inizio salvata!")
                     st.rerun()
 
                 # Vista "foglio bianco" con font scritto a mano / stampatello
-                st.markdown(seduta_foglio_html(s, ora_inizio=ora_inizio.strip() or "20:30"),
+                st.markdown(seduta_foglio_html(s, ora_inizio=ora_inizio.strip() or "18:00"),
                             unsafe_allow_html=True)
 
                 # --- Correggi gli esercizi anche qui (nel Calendario) ---
@@ -2695,18 +2434,10 @@ if menu == "\U0001F5D3\uFE0F Calendario":
                                                key=f"cal_liv_{i}_{j}")
                         cx_desc = st.text_area("Descrizione", value=str(ex.get("Descrizione", "")), key=f"cal_desc_{i}_{j}", height=70)
                         cx_var = st.text_input("Variante", value=str(ex.get("Varianti", "")), key=f"cal_var_{i}_{j}")
-                        st.markdown(
-                            "<div class='vc-nota-head'><span class='vc-nota-dot'></span>"
-                            "Nota dopo l'esecuzione</div>", unsafe_allow_html=True)
-                        cx_nota = st.text_area(
-                            "Nota esecuzione", value=str(ex.get("nota_esecuzione", "")),
-                            placeholder="Com'\u00e8 andato? Cosa migliorare la prossima volta...",
-                            key=f"cal_nota_{i}_{j}", height=70, label_visibility="collapsed")
                         bcal1, bcal2, bcal3, bcal4 = st.columns(4)
                         if bcal1.button("\U0001F4BE Salva", key=f"cal_save_{i}_{j}", use_container_width=True):
                             ex["Nome"] = cx_nome.strip(); ex["Durata_min"] = int(cx_dur); ex["Livello"] = cx_liv
                             ex["Descrizione"] = cx_desc.strip(); ex["Varianti"] = cx_var.strip()
-                            ex["nota_esecuzione"] = cx_nota.strip()
                             _m = _upsert_esercizio_libreria(ex)
                             save_state()
                             st.toast(_m)
@@ -2763,7 +2494,7 @@ if menu == "\U0001F5D3\uFE0F Calendario":
                     key=f"print_{i}",
                     use_container_width=True,
                 )
-                _ora_pdf = str(s.get("ora_inizio", ora_inizio.strip() or "20:30"))
+                _ora_pdf = str(s.get("ora_inizio", ora_inizio.strip() or "18:00"))
                 _pdf = seduta_pdf_bytes(s, ora_inizio=_ora_pdf) if _HAS_FPDF else None
                 if _pdf is not None:
                     cbn4.download_button(
@@ -3131,894 +2862,6 @@ if menu == "\U0001F3C6 Gare":
                         save_state()
                         st.warning("Gara eliminata.")
                         st.rerun()
-
-# ============================================================
-# STATISTICHE PARTITA & SCHEDE GIOCATRICI
-# ============================================================
-if menu == "\U0001F4C8 Statistiche":
-    st.header("\U0001F4C8 Statistiche")
-    st.caption("Inserisci a mano i dati di ogni partita e consulta la scheda statistica di ogni giocatrice. Tutto resta sul tuo computer, offline.")
-
-    if not st.session_state.rosa:
-        st.info("Aggiungi prima le giocatrici nella sezione **Rosa**.")
-    else:
-        tab_scout, tab_part, tab_sched, tab_conf, tab_team = st.tabs(["\U0001F4CB Scout allenamento", "\U0001F3D0 Statistiche partita", "\U0001F464 Schede giocatrici", "\u2696\uFE0F Confronto", "\U0001F465 Squadra"])
-
-        # ---------------- SCOUT ALLENAMENTO ----------------
-        with tab_scout:
-            st.caption("Durante l'allenamento registra ogni esecuzione: scegli "
-                       "giocatrice e fondamentale, poi tocca il simbolo. I dati "
-                       "confluiscono nelle schede giocatrici (tab \U0001F464).")
-            # Legenda dei simboli
-            _leg = "".join(
-                "<span style='display:inline-block;margin:2px 8px 2px 0;padding:3px 10px;"
-                "border-radius:8px;font-weight:700;background:" + SCOUT_INFO[s]["color"] +
-                "22;border-left:4px solid " + SCOUT_INFO[s]["color"] + ";color:#e8f0ff'>"
-                + s + "  " + _html.escape(SCOUT_INFO[s]["label"]) + "</span>"
-                for s in SCOUT_SIMBOLI)
-            st.markdown("<div style='margin:4px 0 8px'>" + _leg + "</div>", unsafe_allow_html=True)
-
-            _data_sc = st.date_input("Data allenamento", value=date.today(), key="scout_data")
-
-            # --- GIOCATRICE con TASTI rapidi (numero di maglia + cognome) ---
-            _rosa_sc = list(st.session_state.rosa)
-            _nomi_rosa_sc = [x["Nome"] for x in _rosa_sc]
-            if _nomi_rosa_sc and st.session_state.get("scout_gioc") not in _nomi_rosa_sc:
-                st.session_state.scout_gioc = _nomi_rosa_sc[0]
-            st.markdown("**Giocatrice** \u2014 selezionata: **" +
-                        str(st.session_state.get("scout_gioc", "\u2014")) + "**")
-            if not _rosa_sc:
-                st.info("Aggiungi prima le giocatrici nella sezione Rosa.")
-            else:
-                _per_riga = 4
-                for _i0 in range(0, len(_rosa_sc), _per_riga):
-                    _fetta = _rosa_sc[_i0:_i0 + _per_riga]
-                    _gc = st.columns(len(_fetta))
-                    for _j, _g0 in enumerate(_fetta):
-                        _nome0 = _g0["Nome"]
-                        _num0 = _g0.get("Numero", "")
-                        _cogn0 = _nome0.split()[-1] if _nome0.strip() else _nome0
-                        _sel0 = (st.session_state.get("scout_gioc") == _nome0)
-                        if _gc[_j].button(
-                                ("\u2705 " if _sel0 else "") + "#" + str(_num0) + "  " + _cogn0,
-                                key="gbtn_" + str(_i0 + _j),
-                                type=("primary" if _sel0 else "secondary"),
-                                use_container_width=True):
-                            st.session_state.scout_gioc = _nome0
-                            st.rerun()
-            _gioc_sc = st.session_state.get("scout_gioc", _nomi_rosa_sc[0] if _nomi_rosa_sc else "")
-
-            # --- FONDAMENTALE con TASTI rapidi ---
-            if st.session_state.get("scout_fond") not in SCOUT_FOND:
-                st.session_state.scout_fond = SCOUT_FOND[0]
-            st.markdown("**Fondamentale** \u2014 selezionato: **" +
-                        str(st.session_state.get("scout_fond")) + "**")
-            _fc = st.columns(3)
-            for _fi, _f0 in enumerate(SCOUT_FOND):
-                _selF = (st.session_state.get("scout_fond") == _f0)
-                if _fc[_fi % 3].button(
-                        ("\u2705 " if _selF else "") + _f0,
-                        key="fbtn_" + _f0,
-                        type=("primary" if _selF else "secondary"),
-                        use_container_width=True):
-                    st.session_state.scout_fond = _f0
-                    st.rerun()
-            _fond_sc = st.session_state.get("scout_fond", SCOUT_FOND[0])
-
-            # Zone di partenza/arrivo per ricostruire la DIREZIONE dell'azione.
-            if _fond_sc == "Ricezione":
-                _lab_from, _lab_to = "Battuta avversaria da (zona avv.)", "Ricevo in (mia zona)"
-            elif _fond_sc == "Battuta":
-                _lab_from, _lab_to = "Servo da (mia zona)", "Palla in (zona avv.)"
-            elif _fond_sc == "Attacco":
-                _lab_from, _lab_to = "Attacco da (mia zona)", "Palla in (zona avv.)"
-            else:
-                _lab_from, _lab_to = "Da (zona)", "A (zona)"
-            # Selezione zona con TASTI veloci (niente menu a tendina).
-            # Layout come in campo: prima linea 4-3-2, seconda linea 5-6-1.
-            if "scout_zf" not in st.session_state:
-                st.session_state.scout_zf = 1
-            if "scout_zt" not in st.session_state:
-                st.session_state.scout_zt = 1
-
-            def _scelta_zona(_titolo, _statekey):
-                _val = st.session_state[_statekey]
-                st.markdown("**" + _titolo + "** \u2014 zona selezionata: **" + str(_val) + "**")
-                for _riga in ([4, 3, 2], [5, 6, 1]):
-                    _cols = st.columns(3)
-                    for _i, _z in enumerate(_riga):
-                        _sel = (_val == _z)
-                        if _cols[_i].button(
-                                ("\u2705 " if _sel else "") + str(_z),
-                                key="zbtn_" + _statekey + "_" + str(_z),
-                                type=("primary" if _sel else "secondary"),
-                                use_container_width=True):
-                            st.session_state[_statekey] = _z
-                            st.rerun()
-
-            _zc = st.columns(2)
-            with _zc[0]:
-                _scelta_zona(_lab_from, "scout_zf")
-            with _zc[1]:
-                _scelta_zona(_lab_to, "scout_zt")
-            _z_from = st.session_state.scout_zf
-            _z_to = st.session_state.scout_zt
-            st.caption("Zone pallavolo: 4-3-2 sotto rete, 5-6-1 in seconda linea.")
-
-            st.markdown("**Esecuzione \u2014 tocca il simbolo:**")
-            _bc = st.columns(len(SCOUT_SIMBOLI))
-            for _bi, _sym in enumerate(SCOUT_SIMBOLI):
-                if _bc[_bi].button(_sym + "  " + SCOUT_INFO[_sym]["label"],
-                                   key="scout_btn_" + _sym, use_container_width=True):
-                    st.session_state.scout.append({
-                        "data": _data_sc.isoformat(), "giocatrice": _gioc_sc,
-                        "fondamentale": _fond_sc, "simbolo": _sym,
-                        "zona_start": int(_z_from), "zona_end": int(_z_to),
-                        "ts": datetime.now().strftime("%H:%M:%S"),
-                    })
-                    save_state()
-                    st.rerun()
-
-            _oggi_ev = [e for e in st.session_state.get("scout", [])
-                        if e.get("data") == _data_sc.isoformat()]
-            st.markdown("#### \U0001F4DD Rilevazioni del " + _data_sc.isoformat() +
-                        " \u2014 **" + str(len(_oggi_ev)) + "** esecuzioni")
-            _cu1, _cu2 = st.columns(2)
-            if _cu1.button("\u21A9\uFE0F Annulla ultima", disabled=not _oggi_ev,
-                           use_container_width=True, key="scout_undo"):
-                for _k in range(len(st.session_state.scout) - 1, -1, -1):
-                    if st.session_state.scout[_k].get("data") == _data_sc.isoformat():
-                        st.session_state.scout.pop(_k)
-                        break
-                save_state()
-                st.rerun()
-            if _cu2.button("\U0001F5D1\uFE0F Svuota giornata", disabled=not _oggi_ev,
-                           use_container_width=True, key="scout_clear"):
-                st.session_state.scout = [e for e in st.session_state.scout
-                                          if e.get("data") != _data_sc.isoformat()]
-                save_state()
-                st.rerun()
-
-            if _oggi_ev:
-                from collections import defaultdict as _dd0
-                _agg0 = _dd0(list)
-                for e in _oggi_ev:
-                    _agg0[(e.get("giocatrice", "?"), e.get("fondamentale", "?"))].append(e.get("simbolo"))
-                _rows0 = []
-                for (_gn, _fn), _syms in sorted(_agg0.items()):
-                    _m = scout_metriche(_syms)
-                    _rows0.append({
-                        "Giocatrice": _gn, "Fondamentale": _fn, "Tocchi": _m["tot"],
-                        "#": _m["conteggi"]["#"], "+": _m["conteggi"]["+"],
-                        "-": _m["conteggi"]["-"], "/": _m["conteggi"]["/"], "=": _m["conteggi"]["="],
-                        "Pos.%": _m["pos"], "Eff.%": _m["eff"], "Err.%": _m["err"],
-                    })
-                st.dataframe(pd.DataFrame(_rows0), hide_index=True, use_container_width=True)
-
-                # ---- Campo con le DIREZIONI dell'azione ----
-                st.markdown("#### \U0001F3D0 Campo \u2014 direzioni di " + _fond_sc)
-                _solo_g = st.checkbox("Mostra solo " + _gioc_sc, value=False, key="scout_solo_g")
-                _ev_campo = [e for e in _oggi_ev
-                             if e.get("fondamentale") == _fond_sc
-                             and (not _solo_g or e.get("giocatrice") == _gioc_sc)]
-                _svg, _nfr = scout_campo_svg(_ev_campo, fondamentale=_fond_sc)
-                st.markdown(_svg, unsafe_allow_html=True)
-                if _nfr == 0:
-                    st.caption("Nessuna direzione registrata per " + _fond_sc +
-                               " in questa giornata. Seleziona le zone e tocca un simbolo.")
-                else:
-                    st.caption("\U0001F3AF " + str(_nfr) + " azioni \u00b7 colore della freccia = "
-                               "qualit\u00e0 dell'esecuzione (verde ottima \u2192 rosso errore).")
-
-        # ---------------- STATISTICHE PARTITA ----------------
-        with tab_part:
-            if not st.session_state.get("gare"):
-                st.info("Nessuna gara in calendario. Aggiungi prima una partita nella sezione **Gare**.")
-            else:
-                _gare_s = sorted(st.session_state.gare,
-                                 key=lambda x: (x.get("data", ""), x.get("ora", "")), reverse=True)
-
-                def _lab_g(g):
-                    _ha = "\u2705" if g.get("stats", {}).get("giocatrici") else "\u2795"
-                    return (_ha + " " + g.get("data", "") + " \u00b7 " +
-                            (g.get("avversario", "") or "?") + " (" + g.get("casa", "") + ")")
-
-                _sel_g = st.selectbox("Scegli la partita", _gare_s, format_func=_lab_g)
-                st.caption("\u2705 = statistiche gi\u00e0 inserite \u00b7 \u2795 = ancora da compilare")
-                if _sel_g is not None:
-                    _nomi_rosa_s = [x["Nome"] for x in st.session_state.rosa]
-
-                    # ============ PUNTEGGIO LIVE con TASTI RAPIDI ============
-                    _gi = _gare_s.index(_sel_g)
-                    _st_live = _sel_g.setdefault("stats", {})
-                    _gd_live = _st_live.setdefault("giocatrici", {})
-                    _avv_tot = int(_st_live.get("avv_punti", 0) or 0)
-                    _noi_tot = sum(int(v.get("punti", 0) or 0) for v in _gd_live.values())
-
-                    def _add_pt(_nome, _tipo=None):
-                        d = _gd_live.setdefault(_nome, {})
-                        d["punti"] = int(d.get("punti", 0) or 0) + 1
-                        if _tipo in ("attacco", "ace", "muri"):
-                            d[_tipo] = int(d.get(_tipo, 0) or 0) + 1
-                        save_state()
-                        st.rerun()
-
-                    def _sub_pt(_nome):
-                        d = _gd_live.setdefault(_nome, {})
-                        if int(d.get("punti", 0) or 0) > 0:
-                            d["punti"] = int(d.get("punti", 0) or 0) - 1
-                            save_state()
-                            st.rerun()
-
-                    def _avv_pt(_delta):
-                        _new = max(0, int(_st_live.get("avv_punti", 0) or 0) + _delta)
-                        _st_live["avv_punti"] = _new
-                        save_state()
-                        st.rerun()
-
-                    st.markdown(
-                        "<div style='display:flex;justify-content:center;gap:24px;align-items:center;"
-                        "background:var(--vc-card);border:1px solid var(--vc-border);border-radius:16px;"
-                        "padding:14px;margin:6px 0'>"
-                        "<div style='text-align:center'><div style='color:var(--vc-muted);font-weight:600'>NOI</div>"
-                        "<div style='font-size:2.6rem;font-weight:800;color:#2ecc71'>" + str(_noi_tot) + "</div></div>"
-                        "<div style='font-size:2rem;color:var(--vc-muted)'>\u2013</div>"
-                        "<div style='text-align:center'><div style='color:var(--vc-muted);font-weight:600'>" +
-                        _html.escape((_sel_g.get("avversario", "") or "AVVERSARIO").upper()) + "</div>"
-                        "<div style='font-size:2.6rem;font-weight:800;color:#e74c3c'>" + str(_avv_tot) + "</div></div>"
-                        "</div>", unsafe_allow_html=True)
-
-                    with st.expander("\u26A1 Punteggio live \u2014 tasti rapidi", expanded=False):
-                        _nomi_live = [n for n in (_sel_g.get("convocate") or []) if n in _nomi_rosa_s] or _nomi_rosa_s
-                        if st.session_state.get("part_gioc") not in _nomi_live and _nomi_live:
-                            st.session_state.part_gioc = _nomi_live[0]
-                        st.markdown("**Giocatrice** \u2014 selezionata: **" +
-                                    str(st.session_state.get("part_gioc", "\u2014")) + "**")
-                        _rosa_map = {x["Nome"]: x for x in st.session_state.rosa}
-                        _per_riga = 4
-                        for _i0 in range(0, len(_nomi_live), _per_riga):
-                            _fetta = _nomi_live[_i0:_i0 + _per_riga]
-                            _pc = st.columns(len(_fetta))
-                            for _j, _nm in enumerate(_fetta):
-                                _gm = _rosa_map.get(_nm, {})
-                                _cogn = _nm.split()[-1] if _nm.strip() else _nm
-                                _selp = (st.session_state.get("part_gioc") == _nm)
-                                _pts = int(_gd_live.get(_nm, {}).get("punti", 0) or 0)
-                                if _pc[_j].button(
-                                        ("\u2705 " if _selp else "") + "#" + str(_gm.get("Numero", "")) +
-                                        " " + _cogn + "  (" + str(_pts) + ")",
-                                        key="pbtn_" + str(_gi) + "_" + str(_i0 + _j),
-                                        type=("primary" if _selp else "secondary"),
-                                        use_container_width=True):
-                                    st.session_state.part_gioc = _nm
-                                    st.rerun()
-
-                        _cur = st.session_state.get("part_gioc")
-                        if _cur:
-                            st.markdown("**Punto di " + _html.escape(_cur) + ":**")
-                            _ac = st.columns(4)
-                            if _ac[0].button("\U0001F3D0 +1 Attacco", key="pt_att_" + str(_gi), use_container_width=True):
-                                _add_pt(_cur, "attacco")
-                            if _ac[1].button("\U0001F3AF +1 Ace", key="pt_ace_" + str(_gi), use_container_width=True):
-                                _add_pt(_cur, "ace")
-                            if _ac[2].button("\U0001F9F1 +1 Muro", key="pt_mur_" + str(_gi), use_container_width=True):
-                                _add_pt(_cur, "muri")
-                            if _ac[3].button("\u2795 +1 Punto", key="pt_gen_" + str(_gi), use_container_width=True):
-                                _add_pt(_cur, None)
-                            if st.button("\u2796 -1 (correggi) " + _cur, key="pt_sub_" + str(_gi),
-                                         use_container_width=True):
-                                _sub_pt(_cur)
-
-                        st.markdown("**Punto avversario:**")
-                        _vc = st.columns(2)
-                        if _vc[0].button("\u2795 +1 Punto avversario", key="avv_add_" + str(_gi),
-                                         use_container_width=True):
-                            _avv_pt(1)
-                        if _vc[1].button("\u2796 -1 avversario (correggi)", key="avv_sub_" + str(_gi),
-                                         use_container_width=True):
-                            _avv_pt(-1)
-                        st.caption("I punti aggiunti qui finiscono subito nelle statistiche della partita "
-                                   "(attacco/ace/muro incrementano anche i punti totali).")
-
-                    _stats = _sel_g.get("stats") or {}
-                    st.markdown("#### \U0001F522 Punteggio set per set")
-                    _set_txt = st.text_input("Risultato set (es. 25-20, 23-25, 25-18)",
-                                             value=_stats.get("set", ""), key="stat_set")
-
-                    # giocatrici da mostrare: le convocate, altrimenti tutta la rosa
-                    _nomi_rosa_s = [x["Nome"] for x in st.session_state.rosa]
-                    _nomi = [n for n in (_sel_g.get("convocate") or []) if n in _nomi_rosa_s]
-                    if not _nomi:
-                        _nomi = _nomi_rosa_s
-                    _gioc = _stats.get("giocatrici") or {}
-                    _rows = []
-                    for n in _nomi:
-                        d = _gioc.get(n, {})
-                        row = {"Giocatrice": n}
-                        for k, lab in STAT_CAMPI:
-                            row[lab] = int(d.get(k, 0) or 0)
-                        _rows.append(row)
-                    _df_in = pd.DataFrame(_rows)
-
-                    st.markdown("#### \U0001F4DD Dati per giocatrice")
-                    st.caption("Scrivi i numeri direttamente nella tabella; usa Tab per spostarti tra le celle.")
-                    _edited = st.data_editor(
-                        _df_in, hide_index=True, use_container_width=True,
-                        disabled=["Giocatrice"],
-                        key="stat_editor_" + str(_gare_s.index(_sel_g)),
-                    )
-                    _note_stat = st.text_area("Note partita (tattica, MVP, ecc.)",
-                                              value=_stats.get("note", ""), key="stat_note")
-                    if st.button("\U0001F4BE Salva statistiche partita", type="primary"):
-                        _gd = {}
-                        for _, r in _edited.iterrows():
-                            nn = r["Giocatrice"]
-                            _gd[nn] = {}
-                            for k, lab in STAT_CAMPI:
-                                _v = r[lab]
-                                _gd[nn][k] = int(_v) if pd.notna(_v) else 0
-                        _sel_g["stats"] = {"set": _set_txt.strip(), "giocatrici": _gd,
-                                           "note": _note_stat.strip()}
-                        save_state()
-                        st.success("Statistiche salvate!")
-                        st.rerun()
-
-                    # ---- Riepilogo squadra della partita ----
-                    if _stats.get("giocatrici"):
-                        st.markdown("---")
-                        st.markdown("#### \U0001F3C6 Riepilogo partita")
-                        if _stats.get("set"):
-                            st.markdown("**Set:** " + _html.escape(_stats["set"]))
-                        _tot = {k: 0 for k, _ in STAT_CAMPI}
-                        for d in _stats["giocatrici"].values():
-                            for k, _ in STAT_CAMPI:
-                                _tot[k] += int(d.get(k, 0) or 0)
-                        mc = st.columns(len(STAT_CAMPI))
-                        for i, (k, lab) in enumerate(STAT_CAMPI):
-                            mc[i].metric(lab, _tot[k])
-                        _best = max(_stats["giocatrici"].items(),
-                                    key=lambda kv: int(kv[1].get("punti", 0) or 0), default=None)
-                        if _best and int(_best[1].get("punti", 0) or 0) > 0:
-                            st.success("\U0001F31F Migliore realizzatrice: **" + _html.escape(_best[0]) +
-                                       "** con " + str(_best[1].get("punti", 0)) + " punti")
-
-        # ---------------- SCHEDE GIOCATRICI ----------------
-        with tab_sched:
-            _nomi_r = [x["Nome"] for x in st.session_state.rosa]
-            _sel_n = st.selectbox("Scegli la giocatrice", _nomi_r, key="sched_sel")
-            _gidx = next((i for i, x in enumerate(st.session_state.rosa) if x["Nome"] == _sel_n), None)
-            if _gidx is not None:
-                g = st.session_state.rosa[_gidx]
-                col_r = colore_ruolo(g.get("Ruolo", "P"))
-                _foto = str(g.get("Foto", "")).strip()
-                _foto_html = (("<img src='data:image/png;base64," + _foto + "' style='width:84px;height:84px;"
-                               "border-radius:50%;object-fit:cover;border:3px solid " + col_r + "'>")
-                              if _foto else "<div style='font-size:2.4rem'>\U0001F3D0</div>")
-                st.markdown(
-                    "<div style='display:flex;align-items:center;gap:16px;background:var(--vc-card);"
-                    "border:1px solid var(--vc-border);border-left:6px solid " + col_r +
-                    ";border-radius:14px;padding:14px 18px'>" + _foto_html +
-                    "<div><div style='font-size:1.4rem;font-weight:800'>#" +
-                    _html.escape(str(g.get('Numero', ''))) + " " + _html.escape(_sel_n) + "</div>"
-                    "<div style='color:" + col_r + ";font-weight:600'>" +
-                    _html.escape(RUOLI.get(g.get('Ruolo'), '')) + "</div>"
-                    "<div style='color:var(--vc-muted);font-size:.85rem'>" +
-                    _html.escape(str(g.get('Altezza', ''))) + " cm \u00b7 " +
-                    _html.escape(str(g.get('Stato', ''))) + "</div></div></div>",
-                    unsafe_allow_html=True,
-                )
-
-                # --- Statistiche aggregate dalle partite ---
-                st.markdown("### \U0001F4CA Statistiche di stagione (dalle partite)")
-                _agg = {k: 0 for k, _ in STAT_CAMPI}
-                _per_gara = []
-                for ga in sorted(st.session_state.get("gare", []), key=lambda x: x.get("data", "")):
-                    gs = (ga.get("stats") or {}).get("giocatrici") or {}
-                    if _sel_n in gs:
-                        d = gs[_sel_n]
-                        for k, _ in STAT_CAMPI:
-                            _agg[k] += int(d.get(k, 0) or 0)
-                        _per_gara.append({
-                            "Partita": ga.get("data", "") + " " + (ga.get("avversario", "") or ""),
-                            "Punti": int(d.get("punti", 0) or 0),
-                            "Ace": int(d.get("ace", 0) or 0),
-                            "Muri": int(d.get("muri", 0) or 0),
-                            "Errori": int(d.get("errori", 0) or 0),
-                        })
-                if _per_gara:
-                    mc = st.columns(len(STAT_CAMPI))
-                    for i, (k, lab) in enumerate(STAT_CAMPI):
-                        mc[i].metric(lab, _agg[k])
-                    _dfg = pd.DataFrame(_per_gara)
-                    st.markdown("**Punti per partita**")
-                    st.bar_chart(_dfg.set_index("Partita")["Punti"])
-                    with st.expander("\U0001F4C4 Dettaglio partita per partita"):
-                        st.dataframe(_dfg, hide_index=True, use_container_width=True)
-                else:
-                    st.caption("Nessuna statistica partita per questa giocatrice. Inseriscile nella scheda **Statistiche partita**.")
-
-                # --- Scout allenamenti (esecuzioni # + - / =) ---
-                st.markdown("---")
-                st.markdown("### \U0001F4CB Scout allenamenti (esecuzioni)")
-                _sc_ev = [e for e in st.session_state.get("scout", [])
-                          if e.get("giocatrice") == _sel_n]
-                if _sc_ev:
-                    from collections import defaultdict as _dd1
-                    _byf = _dd1(list)
-                    for e in _sc_ev:
-                        _byf[e.get("fondamentale", "?")].append(e.get("simbolo"))
-                    _tot_all = scout_metriche([e.get("simbolo") for e in _sc_ev])
-                    _kc = st.columns(4)
-                    _kc[0].metric("Esecuzioni", _tot_all["tot"])
-                    _kc[1].metric("Positivit\u00e0", str(_tot_all["pos"]) + "%")
-                    _kc[2].metric("Efficienza", str(_tot_all["eff"]) + "%")
-                    _kc[3].metric("Errori", str(_tot_all["err"]) + "%")
-                    _rows2 = []
-                    for f in SCOUT_FOND:
-                        if f in _byf:
-                            _m2 = scout_metriche(_byf[f])
-                            _rows2.append({
-                                "Fondamentale": f, "Tocchi": _m2["tot"],
-                                "#": _m2["conteggi"]["#"], "+": _m2["conteggi"]["+"],
-                                "-": _m2["conteggi"]["-"], "/": _m2["conteggi"]["/"], "=": _m2["conteggi"]["="],
-                                "Pos.%": _m2["pos"], "Eff.%": _m2["eff"], "Err.%": _m2["err"],
-                            })
-                    st.dataframe(pd.DataFrame(_rows2), hide_index=True, use_container_width=True)
-                    _bars2 = ""
-                    for r in _rows2:
-                        _w = max(0, min(100, r["Pos.%"]))
-                        _bars2 += ("<div style='margin:4px 0'><span style='display:inline-block;width:120px'>" +
-                                   _html.escape(r["Fondamentale"]) + "</span>"
-                                   "<span style='display:inline-block;width:50%;background:var(--vc-card2);"
-                                   "border-radius:6px;vertical-align:middle'>"
-                                   "<span style='display:inline-block;height:14px;border-radius:6px;width:" +
-                                   str(_w) + "%;background:" + col_r + "'></span></span>"
-                                   "<b style='margin-left:8px'>" + str(r["Pos.%"]) + "% pos.</b></div>")
-                    st.markdown("**Positivit\u00e0 per fondamentale**")
-                    st.markdown(_bars2, unsafe_allow_html=True)
-                else:
-                    st.caption("Nessuna rilevazione scout per questa giocatrice. "
-                               "Registrale nel tab **\U0001F4CB Scout allenamento**.")
-
-                # --- Valutazione tecnica (voti 1-5) ---
-                st.markdown("---")
-                st.markdown("### \u2B50 Valutazione tecnica (1-5)")
-                _val = dict(g.get("Valutazioni") or {})
-                with st.form("form_voti_" + str(_gidx)):
-                    vcols = st.columns(3)
-                    _nuovi = {}
-                    for i, f in enumerate(FOND_VOTO):
-                        with vcols[i % 3]:
-                            _nuovi[f] = st.slider(f, 1, 5, int(_val.get(f, 3) or 3),
-                                                  key="voto_" + str(_gidx) + "_" + f)
-                    _data_val = st.date_input("Data valutazione", value=date.today(),
-                                              key="voto_data_" + str(_gidx))
-                    if st.form_submit_button("\U0001F4BE Salva valutazione", type="primary"):
-                        g["Valutazioni"] = _nuovi
-                        _storico = [h for h in (g.get("Val_storico") or [])
-                                    if h.get("data") != _data_val.isoformat()]
-                        _storico.append({"data": _data_val.isoformat(), "voti": _nuovi})
-                        g["Val_storico"] = sorted(_storico, key=lambda h: h.get("data", ""))
-                        save_state()
-                        st.success("Valutazione salvata!")
-                        st.rerun()
-
-                if _val:
-                    st.markdown("**Profilo tecnico attuale**")
-                    _bars = ""
-                    for f in FOND_VOTO:
-                        v = int(_val.get(f, 0) or 0)
-                        _bars += ("<div style='margin:4px 0'><span style='display:inline-block;width:120px'>" +
-                                  _html.escape(f) + "</span>"
-                                  "<span style='display:inline-block;width:50%;background:var(--vc-card2);"
-                                  "border-radius:6px;vertical-align:middle'>"
-                                  "<span style='display:inline-block;height:14px;border-radius:6px;width:" +
-                                  str(v * 20) + "%;background:" + col_r + "'></span></span>"
-                                  "<b style='margin-left:8px'>" + str(v) + "/5</b></div>")
-                    st.markdown(_bars, unsafe_allow_html=True)
-                    _media = round(sum(int(_val.get(f, 0) or 0) for f in FOND_VOTO) / len(FOND_VOTO), 1)
-                    st.metric("Media tecnica", str(_media) + "/5")
-
-                # Andamento valutazioni nel tempo
-                _storico_v = g.get("Val_storico") or []
-                if len(_storico_v) >= 2:
-                    st.markdown("**\U0001F4C8 Andamento nel tempo (media tecnica)**")
-                    _rows = []
-                    for h in _storico_v:
-                        voti = h.get("voti") or {}
-                        if voti:
-                            _rows.append({"Data": h.get("data", ""),
-                                          "Media": round(sum(voti.values()) / len(voti), 2)})
-                    if _rows:
-                        st.line_chart(pd.DataFrame(_rows).set_index("Data")["Media"])
-
-                # Export scheda in TXT
-                st.markdown("---")
-                _report = "SCHEDA GIOCATRICE\n=================\n"
-                _report += "Nome: " + _sel_n + "\nNumero: " + str(g.get("Numero", "")) + \
-                    "\nRuolo: " + RUOLI.get(g.get("Ruolo"), "") + "\n\n"
-                _report += "STATISTICHE STAGIONE:\n"
-                for k, lab in STAT_CAMPI:
-                    _report += "- " + lab + ": " + str(_agg[k]) + "\n"
-                _report += "\nVALUTAZIONE TECNICA (1-5):\n"
-                for f in FOND_VOTO:
-                    _report += "- " + f + ": " + str(_val.get(f, "-")) + "\n"
-                st.download_button("\U0001F4E5 Scarica scheda (TXT)",
-                                   data=_report.encode("utf-8"),
-                                   file_name="scheda_" + _sel_n.replace(" ", "_") + ".txt",
-                                   mime="text/plain")
-
-        # ---------------- CONFRONTO TRA DUE GIOCATRICI ----------------
-        with tab_conf:
-            st.caption("Confronto rapido fianco a fianco: statistiche di stagione, "
-                       "scout allenamenti e valutazione tecnica.")
-            _nomi_cf = [x["Nome"] for x in st.session_state.rosa]
-            if len(_nomi_cf) < 2:
-                st.info("Servono almeno due giocatrici in rosa per il confronto.")
-            else:
-                _cc = st.columns(2)
-                _g1 = _cc[0].selectbox("Giocatrice A", _nomi_cf, index=0, key="conf_g1")
-                _def2 = 1 if _nomi_cf[1] != _g1 else (2 if len(_nomi_cf) > 2 else 0)
-                _g2 = _cc[1].selectbox("Giocatrice B", _nomi_cf, index=_def2, key="conf_g2")
-
-                def _info_gioc(_nome):
-                    return next((x for x in st.session_state.rosa if x["Nome"] == _nome), {})
-
-                def _stat_stagione(_nome):
-                    _a = {k: 0 for k, _ in STAT_CAMPI}
-                    for ga in st.session_state.get("gare", []):
-                        gs = (ga.get("stats") or {}).get("giocatrici") or {}
-                        if _nome in gs:
-                            d = gs[_nome]
-                            for k, _ in STAT_CAMPI:
-                                _a[k] += int(d.get(k, 0) or 0)
-                    return _a
-
-                def _scout_tot(_nome):
-                    _syms = [e.get("simbolo") for e in st.session_state.get("scout", [])
-                             if e.get("giocatrice") == _nome]
-                    return scout_metriche(_syms)
-
-                _ga1, _ga2 = _info_gioc(_g1), _info_gioc(_g2)
-                _col1, _col2 = colore_ruolo(_ga1.get("Ruolo", "P")), colore_ruolo(_ga2.get("Ruolo", "P"))
-
-                # Intestazioni colorate
-                _hc = st.columns(2)
-                for _hcol, _gg, _cc0 in ((_hc[0], _ga1, _col1), (_hc[1], _ga2, _col2)):
-                    _hcol.markdown(
-                        "<div style='text-align:center;background:var(--vc-card);border:1px solid "
-                        "var(--vc-border);border-top:5px solid " + _cc0 + ";border-radius:12px;"
-                        "padding:10px'><div style='font-size:1.3rem;font-weight:800'>#" +
-                        _html.escape(str(_gg.get("Numero", ""))) + " " +
-                        _html.escape(str(_gg.get("Nome", ""))) + "</div><div style='color:" + _cc0 +
-                        ";font-weight:600'>" + _html.escape(RUOLI.get(_gg.get("Ruolo"), "")) +
-                        "</div></div>", unsafe_allow_html=True)
-
-                def _riga_conf(_label, _v1, _v2, _suffix="", _alto_meglio=True):
-                    try:
-                        _f1, _f2 = float(_v1), float(_v2)
-                    except (TypeError, ValueError):
-                        _f1 = _f2 = 0.0
-                    if _f1 == _f2:
-                        _b1 = _b2 = "#e8f0ff"
-                    elif (_f1 > _f2) == _alto_meglio:
-                        _b1, _b2 = "#2ecc71", "#e8f0ff"
-                    else:
-                        _b1, _b2 = "#e8f0ff", "#2ecc71"
-                    return ("<tr><td style='padding:6px 10px;color:" + _b1 +
-                            ";font-weight:700;text-align:center;width:28%'>" + str(_v1) + _suffix +
-                            "</td><td style='padding:6px 10px;text-align:center;color:var(--vc-muted);"
-                            "width:44%'>" + _html.escape(_label) + "</td><td style='padding:6px 10px;"
-                            "color:" + _b2 + ";font-weight:700;text-align:center;width:28%'>" +
-                            str(_v2) + _suffix + "</td></tr>")
-
-                # --- Statistiche di stagione ---
-                _s1, _s2 = _stat_stagione(_g1), _stat_stagione(_g2)
-                st.markdown("### \U0001F4CA Statistiche di stagione")
-                _tab_html = "<table style='width:100%;border-collapse:collapse'>"
-                for k, lab in STAT_CAMPI:
-                    _alto = (k != "errori")
-                    _tab_html += _riga_conf(lab, _s1[k], _s2[k], _alto_meglio=_alto)
-                _tab_html += "</table>"
-                st.markdown(_tab_html, unsafe_allow_html=True)
-                st.caption("Verde = valore migliore (per gli errori vince il pi\u00f9 basso).")
-
-                # --- Scout allenamenti ---
-                _m1, _m2 = _scout_tot(_g1), _scout_tot(_g2)
-                st.markdown("### \U0001F4CB Scout allenamenti")
-                _tab2 = "<table style='width:100%;border-collapse:collapse'>"
-                _tab2 += _riga_conf("Esecuzioni", _m1["tot"], _m2["tot"])
-                _tab2 += _riga_conf("Positivit\u00e0 %", _m1["pos"], _m2["pos"], "%")
-                _tab2 += _riga_conf("Efficienza %", _m1["eff"], _m2["eff"], "%")
-                _tab2 += _riga_conf("Errori %", _m1["err"], _m2["err"], "%", _alto_meglio=False)
-                _tab2 += "</table>"
-                st.markdown(_tab2, unsafe_allow_html=True)
-
-                # --- Valutazione tecnica (voti 1-5) ---
-                _val1 = dict(_ga1.get("Valutazioni") or {})
-                _val2 = dict(_ga2.get("Valutazioni") or {})
-                if _val1 or _val2:
-                    st.markdown("### \u2B50 Valutazione tecnica (1-5)")
-                    for f in FOND_VOTO:
-                        _v1 = int(_val1.get(f, 0) or 0)
-                        _v2 = int(_val2.get(f, 0) or 0)
-                        st.markdown(
-                            "<div style='display:flex;align-items:center;gap:8px;margin:3px 0'>"
-                            "<div style='width:40px;text-align:right;font-weight:700'>" + str(_v1) + "</div>"
-                            "<div style='flex:1;background:var(--vc-card2);border-radius:6px;height:14px;"
-                            "position:relative'><span style='position:absolute;right:0;height:14px;"
-                            "border-radius:6px;width:" + str(_v1 * 20) + "%;background:" + _col1 + "'></span></div>"
-                            "<div style='width:110px;text-align:center;color:var(--vc-muted);font-size:.85rem'>" +
-                            _html.escape(f) + "</div>"
-                            "<div style='flex:1;background:var(--vc-card2);border-radius:6px;height:14px'>"
-                            "<span style='display:inline-block;height:14px;border-radius:6px;width:" +
-                            str(_v2 * 20) + "%;background:" + _col2 + "'></span></div>"
-                            "<div style='width:40px;font-weight:700'>" + str(_v2) + "</div></div>",
-                            unsafe_allow_html=True)
-                    _med1 = round(sum(int(_val1.get(f, 0) or 0) for f in FOND_VOTO) / len(FOND_VOTO), 1)
-                    _med2 = round(sum(int(_val2.get(f, 0) or 0) for f in FOND_VOTO) / len(FOND_VOTO), 1)
-                    _mc = st.columns(2)
-                    _mc[0].metric("Media tecnica " + _g1, str(_med1) + "/5")
-                    _mc[1].metric("Media tecnica " + _g2, str(_med2) + "/5")
-                else:
-                    st.caption("Nessuna valutazione tecnica inserita per queste giocatrici "
-                               "(aggiungila nel tab \U0001F464 Schede giocatrici).")
-
-        # ---------------- VISTA SQUADRA (tutte le giocatrici) ----------------
-        with tab_team:
-            st.caption("Panoramica di tutta la squadra: statistiche di stagione, "
-                       "scout allenamenti e media tecnica a colpo d'occhio.")
-            _rosa_tm = list(st.session_state.rosa)
-            if not _rosa_tm:
-                st.info("Aggiungi le giocatrici nella sezione Rosa.")
-            else:
-                def _stat_stag_tm(_nome):
-                    _a = {k: 0 for k, _ in STAT_CAMPI}
-                    for ga in st.session_state.get("gare", []):
-                        gs = (ga.get("stats") or {}).get("giocatrici") or {}
-                        if _nome in gs:
-                            d = gs[_nome]
-                            for k, _ in STAT_CAMPI:
-                                _a[k] += int(d.get(k, 0) or 0)
-                    return _a
-
-                def _scout_tm(_nome):
-                    _syms = [e.get("simbolo") for e in st.session_state.get("scout", [])
-                             if e.get("giocatrice") == _nome]
-                    return scout_metriche(_syms)
-
-                _rows_tm = []
-                for g0 in _rosa_tm:
-                    _nome0 = g0.get("Nome", "")
-                    _s0 = _stat_stag_tm(_nome0)
-                    _m0 = _scout_tm(_nome0)
-                    _val0 = dict(g0.get("Valutazioni") or {})
-                    _med0 = (round(sum(int(_val0.get(f, 0) or 0) for f in FOND_VOTO) / len(FOND_VOTO), 1)
-                             if _val0 else 0.0)
-                    _rows_tm.append({
-                        "#": g0.get("Numero", ""),
-                        "Giocatrice": _nome0,
-                        "Ruolo": RUOLI.get(g0.get("Ruolo"), ""),
-                        "Set": _s0["set_giocati"],
-                        "Punti": _s0["punti"],
-                        "Attacco": _s0["attacco"],
-                        "Ace": _s0["ace"],
-                        "Muri": _s0["muri"],
-                        "Errori": _s0["errori"],
-                        "Ric.+": _s0["ric_pos"],
-                        "Scout": _m0["tot"],
-                        "Pos.%": _m0["pos"],
-                        "Eff.%": _m0["eff"],
-                        "Media tec.": _med0,
-                    })
-                _df_tm = pd.DataFrame(_rows_tm)
-
-                # Ordinamento scelto con tasti rapidi
-                _ord_opts = ["#", "Punti", "Attacco", "Ace", "Muri", "Pos.%", "Eff.%", "Media tec."]
-                if st.session_state.get("team_ord") not in _ord_opts:
-                    st.session_state.team_ord = "Punti"
-                st.markdown("**Ordina per:**")
-                _oc = st.columns(len(_ord_opts))
-                for _oi, _oo in enumerate(_ord_opts):
-                    _selo = (st.session_state.team_ord == _oo)
-                    if _oc[_oi].button(("\u2705 " if _selo else "") + _oo,
-                                       key="teamord_" + _oo,
-                                       type=("primary" if _selo else "secondary"),
-                                       use_container_width=True):
-                        st.session_state.team_ord = _oo
-                        st.rerun()
-                _ordc = st.session_state.team_ord
-                _asc = (_ordc == "#")
-                _df_show = _df_tm.sort_values(_ordc, ascending=_asc).reset_index(drop=True)
-                st.dataframe(_df_show, hide_index=True, use_container_width=True)
-
-                # Classifiche rapide (grafici a barre)
-                st.markdown("### \U0001F3C6 Classifiche squadra")
-                _gc = st.columns(2)
-                with _gc[0]:
-                    st.markdown("**Punti totali**")
-                    _dp = _df_tm[_df_tm["Punti"] > 0]
-                    if not _dp.empty:
-                        st.bar_chart(_dp.set_index("Giocatrice")["Punti"])
-                    else:
-                        st.caption("Nessun punto registrato nelle partite.")
-                with _gc[1]:
-                    st.markdown("**Positivit\u00e0 scout %**")
-                    _dpos = _df_tm[_df_tm["Scout"] > 0]
-                    if not _dpos.empty:
-                        st.bar_chart(_dpos.set_index("Giocatrice")["Pos.%"])
-                    else:
-                        st.caption("Nessuna rilevazione scout registrata.")
-
-                # Totali di squadra
-                st.markdown("### \U0001F4CA Totali di squadra")
-                _tc = st.columns(5)
-                _tc[0].metric("Punti", int(_df_tm["Punti"].sum()))
-                _tc[1].metric("Ace", int(_df_tm["Ace"].sum()))
-                _tc[2].metric("Muri", int(_df_tm["Muri"].sum()))
-                _tc[3].metric("Errori", int(_df_tm["Errori"].sum()))
-                _tc[4].metric("Esecuzioni scout", int(_df_tm["Scout"].sum()))
-
-                # Export CSV di tutta la squadra
-                st.download_button(
-                    "\U0001F4E5 Scarica tabella squadra (CSV)",
-                    data=_df_show.to_csv(index=False).encode("utf-8"),
-                    file_name="squadra_statistiche.csv", mime="text/csv")
-
-# ============================================================
-# ALLENAMENTO LIVE (timer a schermo con avviso sonoro)
-# ============================================================
-if menu == "\u23F1\uFE0F Live":
-    st.header("\u23F1\uFE0F Allenamento Live")
-    st.caption("Avvia la seduta: ogni esercizio va in primo piano con il timer che scorre e un avviso sonoro quando mancano 10 secondi. Per il vero schermo intero del browser premi F11.")
-
-    _sedute_live = sorted(st.session_state.sedute, key=lambda s: s.get("data", ""), reverse=True)
-
-    def _build_seq(s):
-        seq = []
-        for r in costruisci_programma(s):
-            if r["tipo"] == "pausa":
-                seq.append({"nome": "Pausa acqua / recupero", "fase": r.get("fase", ""),
-                            "descrizione": "Breve recupero: bevi e preparati al prossimo esercizio.",
-                            "varianti": "", "fondamentale": "", "disegno": "",
-                            "sec": 20, "pausa": True})
-            else:
-                e = r["ex"]
-                seq.append({"nome": str(e.get("Nome", "Esercizio")), "fase": str(e.get("Fase", "")),
-                            "descrizione": str(e.get("Descrizione", "")),
-                            "varianti": str(e.get("Varianti", "")),
-                            "fondamentale": str(e.get("Fondamentale", "")),
-                            "disegno": e.get("Disegno", ""),
-                            "sec": max(5, int(e.get("Durata_min", 1) or 1) * 60), "pausa": False})
-        return seq
-
-    if not _sedute_live:
-        st.info("Non hai ancora sedute salvate. Crea e salva una seduta in **Programma Allenamenti**.")
-    elif not st.session_state.live_running:
-        # ---- Schermata di preparazione ----
-        def _lab_s(s):
-            return (s.get("data", "") + " \u00b7 " + str(s.get("obiettivo", "")) +
-                    " (" + str(len(s.get("esercizi", []))) + " esercizi)")
-        _idx_sel = st.selectbox("Scegli la seduta da allenare", range(len(_sedute_live)),
-                                format_func=lambda i: _lab_s(_sedute_live[i]))
-        _seduta = _sedute_live[_idx_sel]
-        _seq_prev = _build_seq(_seduta)
-        if not _seq_prev:
-            st.warning("Questa seduta non ha esercizi.")
-        else:
-            _tot_min = round(sum(b["sec"] for b in _seq_prev) / 60)
-            st.markdown("#### \U0001F4CB Anteprima sequenza")
-            st.caption("In totale " + str(len(_seq_prev)) + " blocchi \u00b7 circa " + str(_tot_min) + " minuti.")
-            for i, b in enumerate(_seq_prev):
-                _mm, _ss = b["sec"] // 60, b["sec"] % 60
-                _dur = (str(_mm) + " min" if _ss == 0 else str(b["sec"]) + " sec")
-                st.markdown("**" + str(i + 1) + ".** " + _html.escape(b["nome"]) + " \u2014 _" + _dur + "_")
-            if st.button("\u25B6\uFE0F AVVIA ALLENAMENTO", type="primary", use_container_width=True):
-                st.session_state.live_seq = _seq_prev
-                st.session_state.live_idx = 0
-                st.session_state.live_remaining = _seq_prev[0]["sec"]
-                st.session_state.live_running = True
-                st.session_state.live_paused = False
-                st.session_state.live_beeped10 = False
-                st.session_state._beep_now = False
-                st.rerun()
-    else:
-        # ---- Allenamento in corso ----
-        seq = st.session_state.live_seq
-        idx = st.session_state.live_idx
-        rem = st.session_state.live_remaining
-        cur = seq[idx] if 0 <= idx < len(seq) else None
-
-        # Avviso sonoro (una sola volta per evento)
-        if st.session_state.get("_beep_now"):
-            try:
-                st.audio(_beep_wav_bytes(), format="audio/wav", autoplay=True)
-            except TypeError:
-                st.audio(_beep_wav_bytes(), format="audio/wav")
-            st.session_state._beep_now = False
-
-        if cur is None:
-            st.success("\U0001F3C1 Allenamento completato! Ottimo lavoro.")
-            st.balloons()
-            if st.button("\u21A9\uFE0F Chiudi", use_container_width=True, type="primary"):
-                st.session_state.live_running = False
-                st.rerun()
-        else:
-            col_acc = st.session_state.get("tema_squadra", TEMA_DEFAULT).get("colore1", "#ff9f1c")
-            _fase_ico = FASI_ICONA.get(cur["fase"], "\U0001F3D0")
-            _mm, _ss = rem // 60, rem % 60
-            _tempo = "%d:%02d" % (_mm, _ss)
-            _tot = cur["sec"] or 1
-            _perc = int(100 * (_tot - rem) / _tot)
-            _urgente = rem <= 10
-            _timer_col = "#ff4d4d" if _urgente else col_acc
-            _prossimo = ("\u27A1\uFE0F Prossimo: " + _html.escape(seq[idx + 1]["nome"])) if idx + 1 < len(seq) else "\u2705 Ultimo blocco"
-            _desc_html = _html.escape(cur["descrizione"]).replace("\n", "<br>") or "<i>Nessuna descrizione</i>"
-            _var_html = ("<div style='margin-top:12px;font-size:1.1rem;opacity:.85'>\U0001F504 Varianti: " +
-                         _html.escape(cur["varianti"]).replace("\n", "<br>") + "</div>") if cur.get("varianti") else ""
-            st.markdown(
-                "<div style='background:var(--vc-card);border:2px solid " + _timer_col +
-                ";border-radius:20px;padding:26px 32px;min-height:60vh;display:flex;flex-direction:column;"
-                "box-shadow:0 0 30px " + _timer_col + "33'>"
-                "<div style='font-size:1rem;letter-spacing:2px;text-transform:uppercase;color:var(--vc-muted)'>" +
-                _fase_ico + " " + _html.escape(cur["fase"]) +
-                ((" \u00b7 " + _html.escape(cur["fondamentale"])) if cur.get("fondamentale") else "") +
-                " \u00b7 Blocco " + str(idx + 1) + "/" + str(len(seq)) + "</div>"
-                "<div style='font-size:2.6rem;font-weight:800;margin:6px 0 4px'>" + _html.escape(cur["nome"]) + "</div>"
-                "<div style='font-size:6rem;font-weight:900;line-height:1;color:" + _timer_col +
-                ";text-align:center;margin:10px 0;font-variant-numeric:tabular-nums'>" + _tempo + "</div>"
-                "<div style='height:12px;background:var(--vc-card2);border-radius:8px;overflow:hidden;margin-bottom:16px'>"
-                "<div style='height:100%;width:" + str(_perc) + "%;background:" + _timer_col + "'></div></div>"
-                "<div style='font-size:1.3rem;line-height:1.5'>" + _desc_html + "</div>" + _var_html +
-                "<div style='margin-top:auto;padding-top:16px;font-size:1.15rem;font-weight:700;color:" + col_acc + "'>" +
-                _prossimo + "</div></div>",
-                unsafe_allow_html=True,
-            )
-            if _urgente:
-                st.markdown("<div style='text-align:center;color:#ff4d4d;font-weight:800;font-size:1.2rem;margin-top:8px'>\u23F0 Ultimi secondi!</div>", unsafe_allow_html=True)
-
-            b1, b2, b3, b4 = st.columns(4)
-            if st.session_state.live_paused:
-                if b1.button("\u25B6\uFE0F Riprendi", use_container_width=True, type="primary"):
-                    st.session_state.live_paused = False
-                    st.rerun()
-            else:
-                if b1.button("\u23F8\uFE0F Pausa", use_container_width=True):
-                    st.session_state.live_paused = True
-                    st.rerun()
-            if b2.button("\u23EE\uFE0F Precedente", use_container_width=True, disabled=idx == 0):
-                st.session_state.live_idx = max(0, idx - 1)
-                st.session_state.live_remaining = seq[st.session_state.live_idx]["sec"]
-                st.session_state.live_beeped10 = False
-                st.rerun()
-            if b3.button("\u23ED\uFE0F Salta", use_container_width=True):
-                st.session_state.live_idx = idx + 1
-                st.session_state.live_remaining = seq[idx + 1]["sec"] if idx + 1 < len(seq) else 0
-                st.session_state.live_beeped10 = False
-                st.rerun()
-            if b4.button("\u23F9\uFE0F Stop", use_container_width=True):
-                st.session_state.live_running = False
-                st.session_state.live_paused = False
-                st.rerun()
-
-            # TICK: scorre di 1 secondo (solo se non in pausa)
-            if not st.session_state.live_paused:
-                if 0 < rem <= 10 and not st.session_state.live_beeped10:
-                    st.session_state.live_beeped10 = True
-                    st.session_state._beep_now = True
-                    st.rerun()
-                import time as _time
-                _time.sleep(1)
-                rem -= 1
-                if rem <= 0:
-                    st.session_state.live_idx = idx + 1
-                    st.session_state.live_beeped10 = False
-                    st.session_state._beep_now = True
-                    st.session_state.live_remaining = (
-                        seq[st.session_state.live_idx]["sec"] if st.session_state.live_idx < len(seq) else 0)
-                else:
-                    st.session_state.live_remaining = rem
-                st.rerun()
 
 # ============================================================
 # PRESENZE (mensili)
