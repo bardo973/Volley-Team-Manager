@@ -988,7 +988,8 @@ def seduta_pdf_bytes(s, ora_inizio="18:00"):
     squadra = tema.get("nome_squadra", "VolleyCoach")
     tot = sum(int(e["Durata_min"]) for e in s["esercizi"])
     pres = ", ".join(s.get("presenti_nomi") or []) or "-"
-    ass = ", ".join(s.get("assenti_nomi") or []) or "-"
+    _am = s.get("assenti_motivi") or {}
+    ass = ", ".join((_n + (f" ({_am[_n]})" if _am.get(_n) else "")) for _n in (s.get("assenti_nomi") or [])) or "-"
     pdf = FPDF(orientation="P", unit="mm", format="A4")
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
@@ -1081,7 +1082,8 @@ def seduta_html_stampabile(s):
             "</div><div class='ex-campo'>" + campo + "</div></div>"
         )
     pres = ", ".join(s.get("presenti_nomi") or []) or "\u2014"
-    ass = ", ".join(s.get("assenti_nomi") or []) or "\u2014"
+    _am = s.get("assenti_motivi") or {}
+    ass = ", ".join((_n + (f" ({_am[_n]})" if _am.get(_n) else "")) for _n in (s.get("assenti_nomi") or [])) or "\u2014"
     note = _html.escape(s.get("note", "") or "")
     note_html = ("<div class='note'><b>Note:</b> " + note + "</div>") if note else ""
     doc = (
@@ -1118,7 +1120,8 @@ def seduta_foglio_html(s, ora_inizio="18:00"):
     a fianco e pause acqua/recupero."""
     tot = sum(int(e["Durata_min"]) for e in s["esercizi"])
     pres = ", ".join(s.get("presenti_nomi") or []) or "\u2014"
-    ass = ", ".join(s.get("assenti_nomi") or []) or "\u2014"
+    _am = s.get("assenti_motivi") or {}
+    ass = ", ".join((_n + (f" ({_am[_n]})" if _am.get(_n) else "")) for _n in (s.get("assenti_nomi") or [])) or "\u2014"
     court_b64 = _court_png_b64()
     prog = costruisci_programma(s, ora_inizio)
     righe = []
@@ -2007,6 +2010,33 @@ if menu == "\U0001F4CB Programma Allenamenti":
                 )
             else:
                 st.markdown("**\u274C Assenti: 0**")
+
+        # --- Motivo assenza per QUESTO allenamento ---
+        assenti_motivi = {}
+        if assenti:
+            with st.expander("\U0001F4DD Motivo assenza per questo allenamento", expanded=True):
+                st.caption("Indica perch\u00e9 ogni giocatrice \u00e8 assente oggi: il motivo viene salvato nella seduta.")
+                MOTIVI_STD = ["Infortunio", "Malattia", "Lavoro", "Studio/scuola",
+                              "Motivi personali", "Scelta tecnica", "Non giustificata", "Altro"]
+                for _g in assenti:
+                    _nm = _g["Nome"]
+                    _key = f"motivo_ass_{data_seduta.isoformat()}_{_nm}"
+                    _pre = str(_g.get("Motivo_assenza", "") or "").strip()
+                    if not _pre and _g.get("Stato") == "Infortunata":
+                        _pre = "Infortunio"
+                    _in_lista = _pre in MOTIVI_STD
+                    mcol1, mcol2 = st.columns(2)
+                    with mcol1:
+                        _def_idx = MOTIVI_STD.index(_pre) if _in_lista else MOTIVI_STD.index("Altro")
+                        _scelta = st.selectbox(f"{_nm}", MOTIVI_STD, index=_def_idx, key=_key + "_sel")
+                    with mcol2:
+                        _nota = st.text_input("Dettaglio (facoltativo)",
+                                              value="" if _in_lista else _pre,
+                                              key=_key + "_txt",
+                                              placeholder="es. distorsione caviglia, rientro 10/11")
+                    assenti_motivi[_nm] = _scelta + ((" \u2014 " + _nota.strip()) if _nota.strip() else "")
+        st.session_state["_assenti_motivi_corr"] = assenti_motivi
+
         # avvisi su ruoli mancanti
         comp = conta_ruoli(presenti)
         avvisi = []
@@ -2126,6 +2156,7 @@ if menu == "\U0001F4CB Programma Allenamenti":
             "presenti": int(n_presenti),
             "presenti_nomi": [g["Nome"] for g in presenti],
             "assenti_nomi": [g["Nome"] for g in assenti],
+            "assenti_motivi": dict(st.session_state.get("_assenti_motivi_corr", {}) or {}),
             "composizione": conta_ruoli(presenti) if presenti else {},
             "microciclo": (f"{micro_sel.get('macrociclo','')} \u00b7 {micro_sel.get('nome','')}" if micro_sel else ""),
             "fase_macro": fase_macro or "",
@@ -2146,7 +2177,9 @@ if menu == "\U0001F4CB Programma Allenamenti":
             st.markdown(chip_ruoli([g for g in st.session_state.rosa if g["Nome"] in ult["presenti_nomi"]]), unsafe_allow_html=True)
             st.caption("\u2705 " + ", ".join(ult["presenti_nomi"]))
         if ult.get("assenti_nomi"):
-            st.caption("\u274C Assenti: " + ", ".join(ult["assenti_nomi"]))
+            _am = ult.get("assenti_motivi") or {}
+            _ra = [(_n + (f" ({_am[_n]})" if _am.get(_n) else "")) for _n in ult["assenti_nomi"]]
+            st.caption("\u274C Assenti: " + ", ".join(_ra))
 
         st.info("\U0001F4A1 Puoi correggere la seduta: modifica, sostituisci, sposta o elimina ogni singolo esercizio qui sotto.")
         es_list = ult["esercizi"]
@@ -2445,7 +2478,9 @@ if menu == "\U0001F5D3\uFE0F Calendario":
                 if s.get("presenti_nomi"):
                     st.caption("\u2705 Presenti: " + ", ".join(s["presenti_nomi"]))
                 if s.get("assenti_nomi"):
-                    st.caption("\u274C Assenti: " + ", ".join(s["assenti_nomi"]))
+                    _am = s.get("assenti_motivi") or {}
+                    _ra = [(_n + (f" ({_am[_n]})" if _am.get(_n) else "")) for _n in s["assenti_nomi"]]
+                    st.caption("\u274C Assenti: " + ", ".join(_ra))
 
                 # --- Modifica presenze anche dopo il salvataggio ---
                 with st.popover("\u270F\uFE0F Modifica presenze"):
@@ -2456,10 +2491,32 @@ if menu == "\U0001F5D3\uFE0F Calendario":
                             "Chi era presente", _nomi_rosa, default=_pres_corr,
                             key=f"editpres_{i}",
                             help="Aggiorna le atlete presenti: chi non selezioni risulter\u00e0 assente.")
+                        _ass_corr = [n for n in _nomi_rosa if n not in _sel_pres]
+                        _am_old = s.get("assenti_motivi") or {}
+                        _MOTIVI_STD = ["Infortunio", "Malattia", "Lavoro", "Studio/scuola",
+                                       "Motivi personali", "Scelta tecnica", "Non giustificata", "Altro"]
+                        _nuovi_motivi = {}
+                        if _ass_corr:
+                            st.markdown("**\U0001F4DD Motivo assenza**")
+                            for _nm in _ass_corr:
+                                _prev = str(_am_old.get(_nm, "") or "")
+                                _base = _prev.split(" \u2014 ")[0].strip()
+                                _det = _prev.split(" \u2014 ", 1)[1].strip() if " \u2014 " in _prev else ""
+                                _inl = _base in _MOTIVI_STD
+                                ec1, ec2 = st.columns(2)
+                                with ec1:
+                                    _idx = _MOTIVI_STD.index(_base) if _inl else _MOTIVI_STD.index("Altro")
+                                    _sc = st.selectbox(_nm, _MOTIVI_STD, index=_idx, key=f"editmot_sel_{i}_{_nm}")
+                                with ec2:
+                                    _dt = st.text_input("Dettaglio", value=_det if _inl else (_det or _base),
+                                                        key=f"editmot_txt_{i}_{_nm}",
+                                                        placeholder="facoltativo")
+                                _nuovi_motivi[_nm] = _sc + ((" \u2014 " + _dt.strip()) if _dt.strip() else "")
                         if st.button("\U0001F4BE Salva presenze", key=f"savepres_{i}", use_container_width=True):
                             _assenti_nomi = [n for n in _nomi_rosa if n not in _sel_pres]
                             s["presenti_nomi"] = _sel_pres
                             s["assenti_nomi"] = _assenti_nomi
+                            s["assenti_motivi"] = {n: _nuovi_motivi.get(n, "") for n in _assenti_nomi}
                             s["presenti"] = len(_sel_pres)
                             _pres_obj = [g for g in st.session_state.rosa if g["Nome"] in _sel_pres]
                             s["composizione"] = conta_ruoli(_pres_obj)
@@ -2985,7 +3042,9 @@ if menu == "\U0001F4CA Presenze":
         st.markdown("### Dettaglio sedute del mese")
         for s in sorted(sedute_mese, key=lambda x: x["data"]):
             pres = ", ".join(s.get("presenti_nomi") or []) or "\u2014"
-            ass = ", ".join(s.get("assenti_nomi") or []) or "nessuna"
+            _am = s.get("assenti_motivi") or {}
+            _ass_lista = [(_n + (f" ({_am[_n]})" if _am.get(_n) else "")) for _n in (s.get("assenti_nomi") or [])]
+            ass = ", ".join(_ass_lista) or "nessuna"
             st.markdown(
                 f"<div class='block-seduta'><b>{s['data']}</b> \u00b7 \U0001F3AF {s['obiettivo']} \u00b7 {s['intensita']}<br>"
                 f"<span style='color:#5be59a'>\u2705 {_html.escape(pres)}</span><br>"
