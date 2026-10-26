@@ -27,6 +27,18 @@ try:
 except Exception:
     _HAS_CANVAS = False
 
+# Compatibilita': su versioni molto vecchie di Streamlit "st.cache_data" non
+# esiste. In quel caso creiamo un sostituto che non fa nulla, cosi' l'app parte
+# comunque (semplicemente senza il guadagno di velocita' della cache).
+if not hasattr(st, "cache_data"):
+    def _no_cache(*args, **kwargs):
+        if args and callable(args[0]):
+            return args[0]
+        def _wrap(fn):
+            return fn
+        return _wrap
+    st.cache_data = _no_cache
+
 # ============================================================
 # CONFIGURAZIONE
 # ============================================================
@@ -582,12 +594,33 @@ def _scrivi_container(cont):
         raise
 
 
-def elenco_squadre():
-    """Lista di (id, nome) delle squadre della societ\u00e0, in ordine di nome."""
+def _master_sig():
+    """Firma leggera (percorso, data di modifica, dimensione) dei file della
+    societa'. Serve a invalidare la cache dell'elenco squadre: appena si salva,
+    la firma cambia e l'elenco viene ricalcolato. Cosi' nei ricaricamenti in cui
+    non si scrive nulla NON si rilegge il file da disco (app piu' veloce)."""
+    sig = []
+    for p in (MASTER_FILE, MASTER_BAK):
+        try:
+            sttt = os.stat(p)
+            sig.append((p, sttt.st_mtime_ns, sttt.st_size))
+        except OSError:
+            sig.append((p, 0, 0))
+    return tuple(sig)
+
+
+@st.cache_data(show_spinner=False)
+def _elenco_squadre_cached(_sig):
     cont = _carica_container()
     items = [(sid, s.get("nome", "Squadra")) for sid, s in cont.get("squadre", {}).items()]
     items.sort(key=lambda x: x[1].lower())
     return items
+
+
+def elenco_squadre():
+    """Lista di (id, nome) delle squadre della societ\u00e0, in ordine di nome.
+    In cache per firma dei file: niente riletture inutili da disco."""
+    return _elenco_squadre_cached(_master_sig())
 
 
 def crea_squadra(nome):
@@ -814,14 +847,22 @@ def canvas_to_base64(image_data):
         return ""
 
 
-def file_to_base64_png(uploaded):
-    """Converte un'immagine caricata in PNG base64."""
+def file_to_base64_png(uploaded, max_side=480):
+    """Converte un'immagine caricata in PNG base64.
+    Ridimensiona le immagini troppo grandi (lato massimo = max_side px) per
+    tenere i salvataggi leggeri: foto a piena risoluzione rendono l'app piu'
+    pesante da caricare e da salvare."""
     try:
         raw = uploaded.read()
         if _HAS_PIL:
             img = Image.open(io.BytesIO(raw)).convert("RGB")
+            w, h = img.size
+            lato = max(w, h)
+            if lato > max_side:
+                scala = max_side / float(lato)
+                img = img.resize((max(1, int(w * scala)), max(1, int(h * scala))), Image.LANCZOS)
             buf = io.BytesIO()
-            img.save(buf, format="PNG")
+            img.save(buf, format="PNG", optimize=True)
             return base64.b64encode(buf.getvalue()).decode("ascii")
         # senza PIL salva comunque il contenuto grezzo (funziona per PNG)
         return base64.b64encode(raw).decode("ascii")
@@ -1570,7 +1611,7 @@ with st.sidebar:
             nuovo_tema["colore1"] = _col1
             nuovo_tema["colore2"] = _col2
             if _logo_up is not None:
-                _b64 = file_to_base64_png(_logo_up)
+                _b64 = file_to_base64_png(_logo_up, max_side=200)
                 if _b64:
                     nuovo_tema["logo"] = _b64
             st.session_state.tema_squadra = nuovo_tema
@@ -1727,11 +1768,21 @@ if menu == "\U0001F465 Rosa":
             with c3:
                 stato = st.selectbox("Stato", ["Disponibile", "Infortunata", "In recupero", "Indisponibile"])
                 note = st.text_input("Note")
+            st.caption("Se la giocatrice NON \u00e8 disponibile, indica il motivo. In caso di infortunio specifica il tipo e il rientro previsto.")
+            ac1, ac2, ac3 = st.columns(3)
+            with ac1:
+                motivo = st.text_input("Motivo assenza", placeholder="es. influenza, lavoro, scelta tecnica")
+            with ac2:
+                tipo_inf = st.text_input("Tipo di infortunio", placeholder="es. distorsione caviglia")
+            with ac3:
+                data_rientro = st.text_input("Rientro previsto", placeholder="gg/mm/aaaa")
             if st.form_submit_button("Aggiungi", use_container_width=True):
                 if nome.strip():
                     st.session_state.rosa.append({
                         "Nome": nome.strip(), "Numero": int(numero), "Ruolo": ruolo,
                         "Altezza": int(altezza), "Stato": stato, "Note": note.strip(),
+                        "Motivo_assenza": motivo.strip(), "Tipo_infortunio": tipo_inf.strip(),
+                        "Data_rientro": data_rientro.strip(),
                     })
                     save_state()
                     st.success(f"Aggiunta {nome}!")
@@ -1785,6 +1836,23 @@ if menu == "\U0001F465 Rosa":
                                       "border-radius:50%;object-fit:cover;border:2px solid " + col_r + "'>")
                     else:
                         _foto_html = "<div style='font-size:1.5rem'>" + emoji + "</div>"
+                    _stato_cur = str(g.get("Stato", "") or "")
+                    _ass_bits = []
+                    if _stato_cur and _stato_cur != "Disponibile":
+                        _mot = str(g.get("Motivo_assenza", "")).strip()
+                        _tinf = str(g.get("Tipo_infortunio", "")).strip()
+                        _drit = str(g.get("Data_rientro", "")).strip()
+                        if _mot:
+                            _ass_bits.append("\U0001F4DD " + _html.escape(_mot))
+                        if _tinf:
+                            _ass_bits.append("\U0001FA79 " + _html.escape(_tinf))
+                        if _drit:
+                            _ass_bits.append("\U0001F4C5 Rientro: " + _html.escape(_drit))
+                    if _ass_bits:
+                        ass_html = ("<div class='flip-meta' style='color:#ffc9c9;font-size:.76rem;"
+                                    "margin-top:3px;line-height:1.35'>" + " \u00b7 ".join(_ass_bits) + "</div>")
+                    else:
+                        ass_html = ""
                     st.markdown(
                         f"<div class='flip-card'><div class='flip-inner'>"
                         f"<div class='flip-front' style=\"border:1px solid {col_r}; box-shadow:0 0 10px {col_r}2e, inset 0 0 14px {col_r}10;\">"
@@ -1792,6 +1860,7 @@ if menu == "\U0001F465 Rosa":
                         f"<div class='flip-name'>#{_html.escape(str(g['Numero']))} {nome}</div>"
                         f"<div class='flip-role' style='color:{col_r}'>{ruolo_nome}</div>"
                         f"<div class='flip-meta'>{_html.escape(str(g['Altezza']))} cm \u00b7 {emoji} {_html.escape(str(g.get('Stato','')))}</div>"
+                        f"{ass_html}"
                         f"<div class='flip-hint'>\u21bb passa il mouse per la scheda</div>"
                         f"</div>"
                         f"<div class='flip-back' style=\"border:1px solid {col_r}; box-shadow:0 0 10px {col_r}2e, inset 0 0 14px {col_r}10;\">"
@@ -1819,6 +1888,17 @@ if menu == "\U0001F465 Rosa":
                                 "Stato", ["Disponibile", "Infortunata", "In recupero", "Indisponibile"],
                                 index=["Disponibile", "Infortunata", "In recupero", "Indisponibile"].index(g.get("Stato", "Disponibile")),
                             )
+                            st.markdown("**\U0001FA79 Assenza / infortunio**")
+                            st.caption("Compila se la giocatrice non \u00e8 disponibile.")
+                            aec1, aec2 = st.columns(2)
+                            with aec1:
+                                motivo_in = st.text_input("Motivo assenza", value=g.get("Motivo_assenza", ""),
+                                                          placeholder="es. influenza, lavoro, scelta tecnica")
+                            with aec2:
+                                tipo_inf_in = st.text_input("Tipo di infortunio", value=g.get("Tipo_infortunio", ""),
+                                                            placeholder="es. distorsione caviglia")
+                            data_rientro_in = st.text_input("Rientro previsto", value=g.get("Data_rientro", ""),
+                                                            placeholder="gg/mm/aaaa")
                             st.markdown("**\U0001F3AF Obiettivi tecnici**")
                             ob_princ_in = st.text_input(
                                 "Obiettivo tecnico principale",
@@ -1852,6 +1932,9 @@ if menu == "\U0001F465 Rosa":
                                     st.session_state.rosa[i]["Altezza"] = int(altezza_in)
                                     st.session_state.rosa[i]["Note"] = note_in.strip()
                                     st.session_state.rosa[i]["Stato"] = nuovo_stato
+                                    st.session_state.rosa[i]["Motivo_assenza"] = motivo_in.strip()
+                                    st.session_state.rosa[i]["Tipo_infortunio"] = tipo_inf_in.strip()
+                                    st.session_state.rosa[i]["Data_rientro"] = data_rientro_in.strip()
                                     st.session_state.rosa[i]["Obiettivo_principale"] = ob_princ_in.strip()
                                     st.session_state.rosa[i]["Obiettivi"] = obiettivi_in.strip()
                                     st.session_state.rosa[i]["Punti_forza"] = forza.strip()
