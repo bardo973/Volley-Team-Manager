@@ -2020,7 +2020,7 @@ if menu == "\U0001F4CB Programma Allenamenti":
                               "Motivi personali", "Scelta tecnica", "Non giustificata", "Altro"]
                 for _g in assenti:
                     _nm = _g["Nome"]
-                    _key = f"motivo_ass_{data_seduta.isoformat()}_{_nm}"
+                    _key = f"motivo_ass_{_nm}"
                     _pre = str(_g.get("Motivo_assenza", "") or "").strip()
                     if not _pre and _g.get("Stato") == "Infortunata":
                         _pre = "Infortunio"
