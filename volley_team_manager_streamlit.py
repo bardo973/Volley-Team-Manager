@@ -27,18 +27,6 @@ try:
 except Exception:
     _HAS_CANVAS = False
 
-# Compatibilita': su versioni molto vecchie di Streamlit "st.cache_data" non
-# esiste. In quel caso creiamo un sostituto che non fa nulla, cosi' l'app parte
-# comunque (semplicemente senza il guadagno di velocita' della cache).
-if not hasattr(st, "cache_data"):
-    def _no_cache(*args, **kwargs):
-        if args and callable(args[0]):
-            return args[0]
-        def _wrap(fn):
-            return fn
-        return _wrap
-    st.cache_data = _no_cache
-
 # ============================================================
 # CONFIGURAZIONE
 # ============================================================
@@ -217,8 +205,8 @@ st.markdown("""
     .flip-card { background:transparent; perspective:1200px; height:200px; margin-bottom:6px; position:relative; }
     .flip-card::before {
         content:""; position:absolute; left:7%; right:7%; bottom:-14px; height:46%;
-        background: radial-gradient(ellipse at center, rgba(0,0,0,0.5), rgba(0,0,0,0) 72%);
-        filter: blur(8px); z-index:0; pointer-events:none;
+        background: radial-gradient(ellipse at center, rgba(0,0,0,0.55), rgba(0,0,0,0) 72%);
+        filter: blur(16px); z-index:0; pointer-events:none;
     }
     .flip-inner {
         position:relative; width:100%; height:100%; z-index:1;
@@ -272,20 +260,35 @@ st.markdown("""
     ::-webkit-scrollbar-thumb { background: #2a3a5c; border-radius: 8px; }
     ::-webkit-scrollbar-thumb:hover { background: var(--vc-accent); }
 
-    /* ===== Effetti grafici (versione LEGGERA: niente animazioni continue) =====
-       Le luci e i bagliori ora compaiono SOLO al passaggio del mouse (hover):
-       in riposo non c'e' nessuna animazione, quindi la pagina e' molto piu'
-       scattante e leggera, soprattutto con tante card a video. */
+    /* ===== Migliorie grafiche: card luminose con luccichio ===== */
     @keyframes vc-shimmer { 0% { left:-70%; } 100% { left:150%; } }
-    /* flip card: riflesso di luce statico e discreto, senza animazione */
+    @keyframes vc-glow {
+        0%,100% { box-shadow: 0 6px 20px rgba(0,0,0,0.26), 0 0 12px rgba(255,159,28,0.18); }
+        50%     { box-shadow: 0 8px 26px rgba(0,0,0,0.32), 0 0 26px rgba(255,159,28,0.42); }
+    }
+    @keyframes vc-sparkle {
+        0%,100% { opacity:.1; transform:scale(.7); }
+        50%     { opacity:.4; transform:scale(1); }
+    }
+    /* flip card: sweep di luce + pallino luccicante (il bagliore colorato per
+       ruolo resta quello impostato inline) */
     .flip-front::before, .flip-back::before {
-        content:""; position:absolute; top:0; left:-10%; width:55%; height:100%;
-        background: linear-gradient(100deg, transparent 0%, rgba(255,255,255,0.05) 50%, transparent 100%);
+        content:""; position:absolute; top:0; left:-70%; width:55%; height:100%;
+        background: linear-gradient(100deg, transparent 0%, rgba(255,255,255,0.04) 40%,
+                    rgba(255,255,255,0.12) 50%, rgba(255,255,255,0.04) 60%, transparent 100%);
         transform: skewX(-18deg); pointer-events:none; z-index:3;
+        animation: vc-shimmer 8s ease-in-out infinite;
+    }
+    .flip-back::before { animation-delay: 4s; }
+    .flip-front::after, .flip-back::after {
+        content:""; position:absolute; top:12px; right:16px; width:5px; height:5px;
+        border-radius:50%; background:#fff; z-index:4; pointer-events:none;
+        box-shadow:0 0 5px 1px rgba(255,255,255,0.6);
+        animation: vc-sparkle 3.4s ease-in-out infinite;
     }
     .flip-name, .flip-role, .flip-meta, .flip-hint,
     .flip-back-title, .flip-back-body { position:relative; z-index:5; }
-    /* ex-card e block-seduta: sweep di luce SOLO al passaggio del mouse */
+    /* ex-card e block-seduta: sweep di luce al passaggio del mouse */
     .ex-card, .block-seduta { position:relative; overflow:hidden; }
     .ex-card::before, .block-seduta::before {
         content:""; position:absolute; top:0; left:-80%; width:60%; height:100%;
@@ -294,10 +297,16 @@ st.markdown("""
     }
     .ex-card:hover::before, .block-seduta:hover::before { opacity:1; animation: vc-shimmer .9s ease-out; }
     .ex-card:hover { border-color: var(--vc-accent); box-shadow: 0 0 20px rgba(255,159,28,0.35), 0 6px 18px rgba(0,0,0,0.3); }
-    /* hero: statico (nessun bagliore pulsante continuo) */
-    .vc-hero { position:relative; overflow:hidden; }
+    /* hero: bagliore pulsante + sweep continuo */
+    .vc-hero { position:relative; overflow:hidden; animation: vc-glow 4.5s ease-in-out infinite; }
+    .vc-hero::before {
+        content:""; position:absolute; top:0; left:-70%; width:50%; height:100%;
+        background: linear-gradient(100deg, transparent, rgba(255,255,255,0.13), transparent);
+        transform: skewX(-18deg); pointer-events:none;
+        animation: vc-shimmer 6s ease-in-out infinite;
+    }
     .vc-hero > * { position:relative; z-index:2; }
-    /* pulsanti: piccolo riflesso di luce SOLO al hover */
+    /* pulsanti: piccolo riflesso di luce al hover */
     .stButton>button { position:relative; overflow:hidden; }
     .stButton>button::after {
         content:""; position:absolute; top:0; left:-80%; width:55%; height:100%;
@@ -305,6 +314,31 @@ st.markdown("""
         transform: skewX(-18deg); pointer-events:none; opacity:0;
     }
     .stButton>button:hover::after { opacity:1; animation: vc-shimmer .8s ease-out; }
+
+    /* ===== Foto giocatrice: zoom al passaggio del mouse + lightbox al click ===== */
+    .vc-foto-wrap { margin:4px 0 12px; }
+    .vc-foto-zoom { display:inline-flex; flex-direction:column; align-items:center; text-decoration:none; }
+    .vc-foto-thumb {
+        width:120px; height:120px; border-radius:14px; object-fit:cover;
+        border:2px solid var(--vc-border); cursor:zoom-in;
+        transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease;
+    }
+    .vc-foto-zoom:hover .vc-foto-thumb {
+        transform: scale(1.45); border-color: var(--vc-accent);
+        box-shadow: 0 10px 30px rgba(0,0,0,0.55); position:relative; z-index:20;
+    }
+    .vc-foto-cue { color:var(--vc-muted); font-size:.72rem; margin-top:8px; }
+    .vc-lightbox {
+        position:fixed; inset:0; background:rgba(5,10,20,0.92);
+        display:flex; align-items:center; justify-content:center;
+        opacity:0; visibility:hidden; z-index:99999; cursor:zoom-out;
+        transition: opacity .2s ease;
+    }
+    .vc-lightbox:target { opacity:1; visibility:visible; }
+    .vc-lightbox img {
+        max-width:88vw; max-height:88vh; border-radius:16px;
+        box-shadow:0 24px 70px rgba(0,0,0,0.65); border:3px solid var(--vc-accent);
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -594,33 +628,12 @@ def _scrivi_container(cont):
         raise
 
 
-def _master_sig():
-    """Firma leggera (percorso, data di modifica, dimensione) dei file della
-    societa'. Serve a invalidare la cache dell'elenco squadre: appena si salva,
-    la firma cambia e l'elenco viene ricalcolato. Cosi' nei ricaricamenti in cui
-    non si scrive nulla NON si rilegge il file da disco (app piu' veloce)."""
-    sig = []
-    for p in (MASTER_FILE, MASTER_BAK):
-        try:
-            sttt = os.stat(p)
-            sig.append((p, sttt.st_mtime_ns, sttt.st_size))
-        except OSError:
-            sig.append((p, 0, 0))
-    return tuple(sig)
-
-
-@st.cache_data(show_spinner=False)
-def _elenco_squadre_cached(_sig):
+def elenco_squadre():
+    """Lista di (id, nome) delle squadre della societ\u00e0, in ordine di nome."""
     cont = _carica_container()
     items = [(sid, s.get("nome", "Squadra")) for sid, s in cont.get("squadre", {}).items()]
     items.sort(key=lambda x: x[1].lower())
     return items
-
-
-def elenco_squadre():
-    """Lista di (id, nome) delle squadre della societ\u00e0, in ordine di nome.
-    In cache per firma dei file: niente riletture inutili da disco."""
-    return _elenco_squadre_cached(_master_sig())
 
 
 def crea_squadra(nome):
@@ -805,10 +818,8 @@ def disegno_html(b64, classe="ex-disegno"):
     return ""
 
 
-@st.cache_data(show_spinner=False)
 def court_background(w=640, h=360):
-    """Crea un'immagine PIL con un campo da pallavolo visto dall'alto come sfondo.
-    In cache: viene calcolata una sola volta per dimensione (piu' veloce)."""
+    """Crea un'immagine PIL con un campo da pallavolo visto dall'alto come sfondo."""
     if not _HAS_PIL:
         return None
     img = Image.new("RGB", (w, h), (247, 230, 200))
@@ -847,22 +858,14 @@ def canvas_to_base64(image_data):
         return ""
 
 
-def file_to_base64_png(uploaded, max_side=480):
-    """Converte un'immagine caricata in PNG base64.
-    Ridimensiona le immagini troppo grandi (lato massimo = max_side px) per
-    tenere i salvataggi leggeri: foto a piena risoluzione rendono l'app piu'
-    pesante da caricare e da salvare."""
+def file_to_base64_png(uploaded):
+    """Converte un'immagine caricata in PNG base64."""
     try:
         raw = uploaded.read()
         if _HAS_PIL:
             img = Image.open(io.BytesIO(raw)).convert("RGB")
-            w, h = img.size
-            lato = max(w, h)
-            if lato > max_side:
-                scala = max_side / float(lato)
-                img = img.resize((max(1, int(w * scala)), max(1, int(h * scala))), Image.LANCZOS)
             buf = io.BytesIO()
-            img.save(buf, format="PNG", optimize=True)
+            img.save(buf, format="PNG")
             return base64.b64encode(buf.getvalue()).decode("ascii")
         # senza PIL salva comunque il contenuto grezzo (funziona per PNG)
         return base64.b64encode(raw).decode("ascii")
@@ -881,6 +884,58 @@ def stat_presenze_atleta():
         perc = round(100 * pres / tot) if tot else 0
         righe.append({"Atleta": nome, "Presenze": pres, "Sedute": tot, "%": perc})
     return righe, tot
+
+
+def _analisi_carico():
+    """Calcola i minuti allenati per fondamentale (solo i fondamentali principali)
+    e le presenze per atleta, per capire cosa/chi si allena di meno."""
+    min_fond = {f: 0 for f in FOND_TEMA}
+    for s in st.session_state.get("sedute", []):
+        for ex in s.get("esercizi", []):
+            f = str(ex.get("Fondamentale", "")).strip()
+            if f in min_fond:
+                try:
+                    min_fond[f] += int(ex.get("Durata_min", 0) or 0)
+                except Exception:
+                    pass
+    righe_pres, tot_sed = stat_presenze_atleta()
+    return min_fond, righe_pres, tot_sed
+
+
+def _render_analisi():
+    min_fond, righe_pres, tot_sed = _analisi_carico()
+    st.markdown("#### \u23F1\uFE0F Fondamentali che alleni di meno")
+    if any(v > 0 for v in min_fond.values()):
+        media = sum(min_fond.values()) / len(min_fond)
+        for f, v in sorted(min_fond.items(), key=lambda kv: kv[1]):
+            ic = "\U0001F534" if v < media * 0.8 else ("\U0001F7E1" if v < media else "\U0001F7E2")
+            st.markdown(f"- {ic} **{f}** \u2014 {v} min")
+        meno = min(min_fond, key=lambda k: min_fond[k])
+        st.info(f"\U0001F449 Stai allenando di meno **{meno}**. "
+                f"Valuta di inserirlo nelle prossime sedute per bilanciare il lavoro.")
+    else:
+        st.caption("Nessun minuto registrato: salva qualche seduta con esercizi per vedere l'analisi.")
+    st.markdown("#### \U0001F465 Giocatrici che si allenano di meno")
+    if tot_sed and righe_pres:
+        ordinate = sorted(righe_pres, key=lambda r: r["%"])
+        media_p = round(sum(r["%"] for r in righe_pres) / len(righe_pres))
+        for r in ordinate[:5]:
+            ic = "\U0001F534" if r["%"] < media_p else "\U0001F7E1"
+            st.markdown(f"- {ic} **{r['Atleta']}** \u2014 {r['Presenze']}/{r['Sedute']} sedute ({r['%']}%)")
+        st.caption(f"Presenza media della squadra: {media_p}% (su {tot_sed} sedute registrate).")
+    else:
+        st.caption("Ancora nessuna presenza registrata: segna i presenti nelle sedute per vedere l'analisi.")
+
+
+_dialog_dec = getattr(st, "dialog", None) or getattr(st, "experimental_dialog", None)
+if _dialog_dec:
+    @_dialog_dec("\U0001F4CA Cosa alleno di meno")
+    def dialog_analisi():
+        _render_analisi()
+else:
+    def dialog_analisi():
+        with st.expander("\U0001F4CA Cosa alleno di meno", expanded=True):
+            _render_analisi()
 
 
 def campo_visuale_html(presenti):
@@ -913,10 +968,8 @@ def _ascii(txt):
     return str(txt).encode("latin-1", "replace").decode("latin-1")
 
 
-@st.cache_data(show_spinner=False)
 def _court_png_b64():
-    """Campo da pallavolo vuoto (PNG base64) da mostrare a fianco di ogni esercizio.
-    In cache: generato una sola volta e riusato ad ogni ricarica (piu' veloce)."""
+    """Campo da pallavolo vuoto (PNG base64) da mostrare a fianco di ogni esercizio."""
     img = court_background(240, 150)
     if img is None:
         return ""
@@ -988,8 +1041,7 @@ def seduta_pdf_bytes(s, ora_inizio="18:00"):
     squadra = tema.get("nome_squadra", "VolleyCoach")
     tot = sum(int(e["Durata_min"]) for e in s["esercizi"])
     pres = ", ".join(s.get("presenti_nomi") or []) or "-"
-    _am = s.get("assenti_motivi") or {}
-    ass = ", ".join((_n + (f" ({_am[_n]})" if _am.get(_n) else "")) for _n in (s.get("assenti_nomi") or [])) or "-"
+    ass = ", ".join(s.get("assenti_nomi") or []) or "-"
     pdf = FPDF(orientation="P", unit="mm", format="A4")
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
@@ -1082,8 +1134,7 @@ def seduta_html_stampabile(s):
             "</div><div class='ex-campo'>" + campo + "</div></div>"
         )
     pres = ", ".join(s.get("presenti_nomi") or []) or "\u2014"
-    _am = s.get("assenti_motivi") or {}
-    ass = ", ".join((_n + (f" ({_am[_n]})" if _am.get(_n) else "")) for _n in (s.get("assenti_nomi") or [])) or "\u2014"
+    ass = ", ".join(s.get("assenti_nomi") or []) or "\u2014"
     note = _html.escape(s.get("note", "") or "")
     note_html = ("<div class='note'><b>Note:</b> " + note + "</div>") if note else ""
     doc = (
@@ -1120,8 +1171,7 @@ def seduta_foglio_html(s, ora_inizio="18:00"):
     a fianco e pause acqua/recupero."""
     tot = sum(int(e["Durata_min"]) for e in s["esercizi"])
     pres = ", ".join(s.get("presenti_nomi") or []) or "\u2014"
-    _am = s.get("assenti_motivi") or {}
-    ass = ", ".join((_n + (f" ({_am[_n]})" if _am.get(_n) else "")) for _n in (s.get("assenti_nomi") or [])) or "\u2014"
+    ass = ", ".join(s.get("assenti_nomi") or []) or "\u2014"
     court_b64 = _court_png_b64()
     prog = costruisci_programma(s, ora_inizio)
     righe = []
@@ -1614,7 +1664,7 @@ with st.sidebar:
             nuovo_tema["colore1"] = _col1
             nuovo_tema["colore2"] = _col2
             if _logo_up is not None:
-                _b64 = file_to_base64_png(_logo_up, max_side=200)
+                _b64 = file_to_base64_png(_logo_up)
                 if _b64:
                     nuovo_tema["logo"] = _b64
             st.session_state.tema_squadra = nuovo_tema
@@ -1673,6 +1723,9 @@ if menu == "\U0001F3E0 Dashboard":
     _vcard(c2, "\U0001F7E2", len(disp), "Disponibili")
     _vcard(c3, "\U0001F4CA", str(_pres_media) + "%", "Presenza media")
     _vcard(c4, "\U0001F4C5", len(st.session_state.sedute), "Sedute programmate")
+
+    if st.button("\U0001F4CA Cosa sto allenando di meno?", use_container_width=True):
+        dialog_analisi()
 
     st.markdown("### Composizione rosa per ruolo")
     conteggio = conta_ruoli(st.session_state.rosa)
@@ -1771,21 +1824,11 @@ if menu == "\U0001F465 Rosa":
             with c3:
                 stato = st.selectbox("Stato", ["Disponibile", "Infortunata", "In recupero", "Indisponibile"])
                 note = st.text_input("Note")
-            st.caption("Se la giocatrice NON \u00e8 disponibile, indica il motivo. In caso di infortunio specifica il tipo e il rientro previsto.")
-            ac1, ac2, ac3 = st.columns(3)
-            with ac1:
-                motivo = st.text_input("Motivo assenza", placeholder="es. influenza, lavoro, scelta tecnica")
-            with ac2:
-                tipo_inf = st.text_input("Tipo di infortunio", placeholder="es. distorsione caviglia")
-            with ac3:
-                data_rientro = st.text_input("Rientro previsto", placeholder="gg/mm/aaaa")
             if st.form_submit_button("Aggiungi", use_container_width=True):
                 if nome.strip():
                     st.session_state.rosa.append({
                         "Nome": nome.strip(), "Numero": int(numero), "Ruolo": ruolo,
                         "Altezza": int(altezza), "Stato": stato, "Note": note.strip(),
-                        "Motivo_assenza": motivo.strip(), "Tipo_infortunio": tipo_inf.strip(),
-                        "Data_rientro": data_rientro.strip(),
                     })
                     save_state()
                     st.success(f"Aggiunta {nome}!")
@@ -1828,34 +1871,30 @@ if menu == "\U0001F465 Rosa":
                     else:
                         pres_line = ("<div style='margin-top:8px;border-top:1px solid #ffffff22;"
                                      "padding-top:6px;font-size:.82rem;color:#9fb3d1'>\u2705 Presenze: \u2014</div>")
+                    _inf_list = g.get("Infortuni", []) or []
+                    if _inf_list:
+                        _rows_inf = []
+                        for _p in _inf_list:
+                            _tp = _html.escape(str(_p.get("tipo", "") or "Infortunio"))
+                            _dal = _html.escape(str(_p.get("dal", "") or "?"))
+                            _al = _html.escape(str(_p.get("al", "") or "in corso"))
+                            _rows_inf.append("\U0001FA79 " + _tp + ": " + _dal + " \u2192 " + _al)
+                        inf_line = ("<div style='margin-top:8px;border-top:1px solid #ffffff22;"
+                                    "padding-top:6px;font-size:.78rem;color:#ff9f9f'>"
+                                    "Periodi di stop per infortunio:<br>" + "<br>".join(_rows_inf) + "</div>")
+                    else:
+                        inf_line = ""
                     if parti:
-                        back_body = f"<div class='flip-back-body'>{'<br>'.join(parti)}{pres_line}</div>"
+                        back_body = f"<div class='flip-back-body'>{'<br>'.join(parti)}{pres_line}{inf_line}</div>"
                     else:
                         back_body = ("<div class='flip-back-body'><span class='flip-empty'>"
-                                     "Nessun obiettivo inserito.</span>" + pres_line + "</div>")
+                                     "Nessun obiettivo inserito.</span>" + pres_line + inf_line + "</div>")
                     _foto = str(g.get("Foto", "")).strip()
                     if _foto:
                         _foto_html = ("<img src='data:image/png;base64," + _foto + "' style='width:72px;height:72px;"
                                       "border-radius:50%;object-fit:cover;border:2px solid " + col_r + "'>")
                     else:
                         _foto_html = "<div style='font-size:1.5rem'>" + emoji + "</div>"
-                    _stato_cur = str(g.get("Stato", "") or "")
-                    _ass_bits = []
-                    if _stato_cur and _stato_cur != "Disponibile":
-                        _mot = str(g.get("Motivo_assenza", "")).strip()
-                        _tinf = str(g.get("Tipo_infortunio", "")).strip()
-                        _drit = str(g.get("Data_rientro", "")).strip()
-                        if _mot:
-                            _ass_bits.append("\U0001F4DD " + _html.escape(_mot))
-                        if _tinf:
-                            _ass_bits.append("\U0001FA79 " + _html.escape(_tinf))
-                        if _drit:
-                            _ass_bits.append("\U0001F4C5 Rientro: " + _html.escape(_drit))
-                    if _ass_bits:
-                        ass_html = ("<div class='flip-meta' style='color:#ffc9c9;font-size:.76rem;"
-                                    "margin-top:3px;line-height:1.35'>" + " \u00b7 ".join(_ass_bits) + "</div>")
-                    else:
-                        ass_html = ""
                     st.markdown(
                         f"<div class='flip-card'><div class='flip-inner'>"
                         f"<div class='flip-front' style=\"border:1px solid {col_r}; box-shadow:0 0 10px {col_r}2e, inset 0 0 14px {col_r}10;\">"
@@ -1863,7 +1902,6 @@ if menu == "\U0001F465 Rosa":
                         f"<div class='flip-name'>#{_html.escape(str(g['Numero']))} {nome}</div>"
                         f"<div class='flip-role' style='color:{col_r}'>{ruolo_nome}</div>"
                         f"<div class='flip-meta'>{_html.escape(str(g['Altezza']))} cm \u00b7 {emoji} {_html.escape(str(g.get('Stato','')))}</div>"
-                        f"{ass_html}"
                         f"<div class='flip-hint'>\u21bb passa il mouse per la scheda</div>"
                         f"</div>"
                         f"<div class='flip-back' style=\"border:1px solid {col_r}; box-shadow:0 0 10px {col_r}2e, inset 0 0 14px {col_r}10;\">"
@@ -1891,17 +1929,6 @@ if menu == "\U0001F465 Rosa":
                                 "Stato", ["Disponibile", "Infortunata", "In recupero", "Indisponibile"],
                                 index=["Disponibile", "Infortunata", "In recupero", "Indisponibile"].index(g.get("Stato", "Disponibile")),
                             )
-                            st.markdown("**\U0001FA79 Assenza / infortunio**")
-                            st.caption("Compila se la giocatrice non \u00e8 disponibile.")
-                            aec1, aec2 = st.columns(2)
-                            with aec1:
-                                motivo_in = st.text_input("Motivo assenza", value=g.get("Motivo_assenza", ""),
-                                                          placeholder="es. influenza, lavoro, scelta tecnica")
-                            with aec2:
-                                tipo_inf_in = st.text_input("Tipo di infortunio", value=g.get("Tipo_infortunio", ""),
-                                                            placeholder="es. distorsione caviglia")
-                            data_rientro_in = st.text_input("Rientro previsto", value=g.get("Data_rientro", ""),
-                                                            placeholder="gg/mm/aaaa")
                             st.markdown("**\U0001F3AF Obiettivi tecnici**")
                             ob_princ_in = st.text_input(
                                 "Obiettivo tecnico principale",
@@ -1918,6 +1945,18 @@ if menu == "\U0001F465 Rosa":
                             migliorare = st.text_area("\U0001F527 Aree da migliorare", value=g.get("Da_migliorare", ""), height=70)
                             lavoro = st.text_area("\U0001F3CB\uFE0F Lavoro individuale assegnato", value=g.get("Lavoro_individuale", ""), height=70)
                             st.markdown("**\U0001F4F7 Foto**")
+                            _cur_foto = str(st.session_state.rosa[i].get("Foto", "")).strip()
+                            if _cur_foto:
+                                st.markdown(
+                                    "<div class='vc-foto-wrap'>"
+                                    "<a href='#zoomfoto_" + str(i) + "' class='vc-foto-zoom'>"
+                                    "<img src='data:image/png;base64," + _cur_foto + "' class='vc-foto-thumb'>"
+                                    "<span class='vc-foto-cue'>\U0001F50D passa il mouse o clicca per ingrandire</span></a>"
+                                    "<a href='#' class='vc-lightbox' id='zoomfoto_" + str(i) + "'>"
+                                    "<img src='data:image/png;base64," + _cur_foto + "'></a>"
+                                    "</div>",
+                                    unsafe_allow_html=True,
+                                )
                             foto_up = st.file_uploader("Carica/aggiorna foto", type=["png", "jpg", "jpeg"], key=f"foto_{i}")
                             rimuovi_foto = False
                             if g.get("Foto"):
@@ -1935,9 +1974,6 @@ if menu == "\U0001F465 Rosa":
                                     st.session_state.rosa[i]["Altezza"] = int(altezza_in)
                                     st.session_state.rosa[i]["Note"] = note_in.strip()
                                     st.session_state.rosa[i]["Stato"] = nuovo_stato
-                                    st.session_state.rosa[i]["Motivo_assenza"] = motivo_in.strip()
-                                    st.session_state.rosa[i]["Tipo_infortunio"] = tipo_inf_in.strip()
-                                    st.session_state.rosa[i]["Data_rientro"] = data_rientro_in.strip()
                                     st.session_state.rosa[i]["Obiettivo_principale"] = ob_princ_in.strip()
                                     st.session_state.rosa[i]["Obiettivi"] = obiettivi_in.strip()
                                     st.session_state.rosa[i]["Punti_forza"] = forza.strip()
@@ -1954,6 +1990,50 @@ if menu == "\U0001F465 Rosa":
                                     st.rerun()
                             if elimina:
                                 st.session_state.rosa.pop(i)
+                                save_state()
+                                st.rerun()
+                        st.markdown("**\U0001FA79 Periodi di stop per infortunio**")
+                        st.caption("Restano salvati nella scheda: tieni traccia dei periodi in cui la giocatrice si \u00e8 fermata.")
+                        _inf = st.session_state.rosa[i].get("Infortuni", []) or []
+                        if _inf:
+                            for _k, _p in enumerate(_inf):
+                                _tp = _p.get("tipo", "") or "Infortunio"
+                                _dal = _p.get("dal", "") or "?"
+                                _al = _p.get("al", "") or "in corso"
+                                _note_p = _p.get("note", "")
+                                _gg_txt = ""
+                                try:
+                                    _d1 = date.fromisoformat(_p.get("dal", ""))
+                                    _d2 = date.fromisoformat(_p.get("al", ""))
+                                    _gg = (_d2 - _d1).days
+                                    if _gg >= 0:
+                                        _gg_txt = f" \u00b7 {_gg} giorni"
+                                except Exception:
+                                    pass
+                                rc1, rc2 = st.columns([6, 1])
+                                rc1.markdown(
+                                    f"\U0001FA79 **{_tp}** \u00b7 {_dal} \u2192 {_al}{_gg_txt}"
+                                    + (f"  \n_{_note_p}_" if _note_p else "")
+                                )
+                                if rc2.button("\U0001F5D1\uFE0F", key=f"delinf_{i}_{_k}", help="Elimina periodo"):
+                                    st.session_state.rosa[i]["Infortuni"].pop(_k)
+                                    save_state()
+                                    st.rerun()
+                        else:
+                            st.caption("Nessun periodo di infortunio registrato.")
+                        with st.form(f"inf_add_{i}", clear_on_submit=True):
+                            ic1, ic2, ic3 = st.columns(3)
+                            _i_tipo = ic1.text_input("Tipo infortunio", placeholder="es. Distorsione caviglia")
+                            _i_dal = ic2.date_input("Dal", value=date.today())
+                            _i_al = ic3.date_input("Rientro (previsto/effettivo)", value=date.today())
+                            _i_note = st.text_input("Note (facoltative)")
+                            if st.form_submit_button("\u2795 Aggiungi periodo di stop", use_container_width=True):
+                                st.session_state.rosa[i].setdefault("Infortuni", []).append({
+                                    "tipo": _i_tipo.strip(),
+                                    "dal": _i_dal.isoformat(),
+                                    "al": _i_al.isoformat(),
+                                    "note": _i_note.strip(),
+                                })
                                 save_state()
                                 st.rerun()
     else:
@@ -2010,33 +2090,6 @@ if menu == "\U0001F4CB Programma Allenamenti":
                 )
             else:
                 st.markdown("**\u274C Assenti: 0**")
-
-        # --- Motivo assenza per QUESTO allenamento ---
-        assenti_motivi = {}
-        if assenti:
-            with st.expander("\U0001F4DD Motivo assenza per questo allenamento", expanded=True):
-                st.caption("Indica perch\u00e9 ogni giocatrice \u00e8 assente oggi: il motivo viene salvato nella seduta.")
-                MOTIVI_STD = ["Infortunio", "Malattia", "Lavoro", "Studio/scuola",
-                              "Motivi personali", "Scelta tecnica", "Non giustificata", "Altro"]
-                for _g in assenti:
-                    _nm = _g["Nome"]
-                    _key = f"motivo_ass_{_nm}"
-                    _pre = str(_g.get("Motivo_assenza", "") or "").strip()
-                    if not _pre and _g.get("Stato") == "Infortunata":
-                        _pre = "Infortunio"
-                    _in_lista = _pre in MOTIVI_STD
-                    mcol1, mcol2 = st.columns(2)
-                    with mcol1:
-                        _def_idx = MOTIVI_STD.index(_pre) if _in_lista else MOTIVI_STD.index("Altro")
-                        _scelta = st.selectbox(f"{_nm}", MOTIVI_STD, index=_def_idx, key=_key + "_sel")
-                    with mcol2:
-                        _nota = st.text_input("Dettaglio (facoltativo)",
-                                              value="" if _in_lista else _pre,
-                                              key=_key + "_txt",
-                                              placeholder="es. distorsione caviglia, rientro 10/11")
-                    assenti_motivi[_nm] = _scelta + ((" \u2014 " + _nota.strip()) if _nota.strip() else "")
-        st.session_state["_assenti_motivi_corr"] = assenti_motivi
-
         # avvisi su ruoli mancanti
         comp = conta_ruoli(presenti)
         avvisi = []
@@ -2156,7 +2209,6 @@ if menu == "\U0001F4CB Programma Allenamenti":
             "presenti": int(n_presenti),
             "presenti_nomi": [g["Nome"] for g in presenti],
             "assenti_nomi": [g["Nome"] for g in assenti],
-            "assenti_motivi": dict(st.session_state.get("_assenti_motivi_corr", {}) or {}),
             "composizione": conta_ruoli(presenti) if presenti else {},
             "microciclo": (f"{micro_sel.get('macrociclo','')} \u00b7 {micro_sel.get('nome','')}" if micro_sel else ""),
             "fase_macro": fase_macro or "",
@@ -2177,9 +2229,7 @@ if menu == "\U0001F4CB Programma Allenamenti":
             st.markdown(chip_ruoli([g for g in st.session_state.rosa if g["Nome"] in ult["presenti_nomi"]]), unsafe_allow_html=True)
             st.caption("\u2705 " + ", ".join(ult["presenti_nomi"]))
         if ult.get("assenti_nomi"):
-            _am = ult.get("assenti_motivi") or {}
-            _ra = [(_n + (f" ({_am[_n]})" if _am.get(_n) else "")) for _n in ult["assenti_nomi"]]
-            st.caption("\u274C Assenti: " + ", ".join(_ra))
+            st.caption("\u274C Assenti: " + ", ".join(ult["assenti_nomi"]))
 
         st.info("\U0001F4A1 Puoi correggere la seduta: modifica, sostituisci, sposta o elimina ogni singolo esercizio qui sotto.")
         es_list = ult["esercizi"]
@@ -2478,9 +2528,7 @@ if menu == "\U0001F5D3\uFE0F Calendario":
                 if s.get("presenti_nomi"):
                     st.caption("\u2705 Presenti: " + ", ".join(s["presenti_nomi"]))
                 if s.get("assenti_nomi"):
-                    _am = s.get("assenti_motivi") or {}
-                    _ra = [(_n + (f" ({_am[_n]})" if _am.get(_n) else "")) for _n in s["assenti_nomi"]]
-                    st.caption("\u274C Assenti: " + ", ".join(_ra))
+                    st.caption("\u274C Assenti: " + ", ".join(s["assenti_nomi"]))
 
                 # --- Modifica presenze anche dopo il salvataggio ---
                 with st.popover("\u270F\uFE0F Modifica presenze"):
@@ -2491,32 +2539,10 @@ if menu == "\U0001F5D3\uFE0F Calendario":
                             "Chi era presente", _nomi_rosa, default=_pres_corr,
                             key=f"editpres_{i}",
                             help="Aggiorna le atlete presenti: chi non selezioni risulter\u00e0 assente.")
-                        _ass_corr = [n for n in _nomi_rosa if n not in _sel_pres]
-                        _am_old = s.get("assenti_motivi") or {}
-                        _MOTIVI_STD = ["Infortunio", "Malattia", "Lavoro", "Studio/scuola",
-                                       "Motivi personali", "Scelta tecnica", "Non giustificata", "Altro"]
-                        _nuovi_motivi = {}
-                        if _ass_corr:
-                            st.markdown("**\U0001F4DD Motivo assenza**")
-                            for _nm in _ass_corr:
-                                _prev = str(_am_old.get(_nm, "") or "")
-                                _base = _prev.split(" \u2014 ")[0].strip()
-                                _det = _prev.split(" \u2014 ", 1)[1].strip() if " \u2014 " in _prev else ""
-                                _inl = _base in _MOTIVI_STD
-                                ec1, ec2 = st.columns(2)
-                                with ec1:
-                                    _idx = _MOTIVI_STD.index(_base) if _inl else _MOTIVI_STD.index("Altro")
-                                    _sc = st.selectbox(_nm, _MOTIVI_STD, index=_idx, key=f"editmot_sel_{i}_{_nm}")
-                                with ec2:
-                                    _dt = st.text_input("Dettaglio", value=_det if _inl else (_det or _base),
-                                                        key=f"editmot_txt_{i}_{_nm}",
-                                                        placeholder="facoltativo")
-                                _nuovi_motivi[_nm] = _sc + ((" \u2014 " + _dt.strip()) if _dt.strip() else "")
                         if st.button("\U0001F4BE Salva presenze", key=f"savepres_{i}", use_container_width=True):
                             _assenti_nomi = [n for n in _nomi_rosa if n not in _sel_pres]
                             s["presenti_nomi"] = _sel_pres
                             s["assenti_nomi"] = _assenti_nomi
-                            s["assenti_motivi"] = {n: _nuovi_motivi.get(n, "") for n in _assenti_nomi}
                             s["presenti"] = len(_sel_pres)
                             _pres_obj = [g for g in st.session_state.rosa if g["Nome"] in _sel_pres]
                             s["composizione"] = conta_ruoli(_pres_obj)
@@ -3042,9 +3068,7 @@ if menu == "\U0001F4CA Presenze":
         st.markdown("### Dettaglio sedute del mese")
         for s in sorted(sedute_mese, key=lambda x: x["data"]):
             pres = ", ".join(s.get("presenti_nomi") or []) or "\u2014"
-            _am = s.get("assenti_motivi") or {}
-            _ass_lista = [(_n + (f" ({_am[_n]})" if _am.get(_n) else "")) for _n in (s.get("assenti_nomi") or [])]
-            ass = ", ".join(_ass_lista) or "nessuna"
+            ass = ", ".join(s.get("assenti_nomi") or []) or "nessuna"
             st.markdown(
                 f"<div class='block-seduta'><b>{s['data']}</b> \u00b7 \U0001F3AF {s['obiettivo']} \u00b7 {s['intensita']}<br>"
                 f"<span style='color:#5be59a'>\u2705 {_html.escape(pres)}</span><br>"
