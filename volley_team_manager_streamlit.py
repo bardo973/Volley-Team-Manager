@@ -225,6 +225,11 @@ st.markdown("""
         transform: rotateY(180deg);
         background: linear-gradient(150deg, #101b33f0 0%, #16223dcc 100%);
     }
+    .flip-avatar {
+        width:44px; height:44px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+        font-size:1.35rem; margin-bottom:8px; border:2px solid var(--vc-border);
+        background: rgba(255,255,255,0.05);
+    }
     .flip-name { font-size:1.15rem; font-weight:800; color:#ffffff; line-height:1.2; }
     .flip-role { font-weight:700; font-size:.95rem; margin-top:2px; }
     .flip-meta { color:#9fb3d1; font-size:.82rem; margin-top:4px; }
@@ -260,37 +265,61 @@ st.markdown("""
     ::-webkit-scrollbar-thumb { background: #2a3a5c; border-radius: 8px; }
     ::-webkit-scrollbar-thumb:hover { background: var(--vc-accent); }
 
-    /* ===== Stile essenziale e leggero (effetti luce/animazioni rimossi per velocit\u00e0) ===== */
-    /* Testo delle flip card sempre leggibile */
+    /* ===== Migliorie grafiche: card luminose con luccichio ===== */
+    @keyframes vc-shimmer { 0% { left:-70%; } 100% { left:150%; } }
+    @keyframes vc-glow {
+        0%,100% { box-shadow: 0 6px 20px rgba(0,0,0,0.26), 0 0 12px rgba(255,159,28,0.18); }
+        50%     { box-shadow: 0 8px 26px rgba(0,0,0,0.32), 0 0 26px rgba(255,159,28,0.42); }
+    }
+    @keyframes vc-sparkle {
+        0%,100% { opacity:.1; transform:scale(.7); }
+        50%     { opacity:.4; transform:scale(1); }
+    }
+    /* flip card: sweep di luce + pallino luccicante (il bagliore colorato per
+       ruolo resta quello impostato inline) */
+    .flip-front::before, .flip-back::before {
+        content:""; position:absolute; top:0; left:-70%; width:55%; height:100%;
+        background: linear-gradient(100deg, transparent 0%, rgba(255,255,255,0.04) 40%,
+                    rgba(255,255,255,0.12) 50%, rgba(255,255,255,0.04) 60%, transparent 100%);
+        transform: skewX(-18deg); pointer-events:none; z-index:3;
+        animation: vc-shimmer 8s ease-in-out infinite;
+    }
+    .flip-back::before { animation-delay: 4s; }
+    .flip-front::after, .flip-back::after {
+        content:""; position:absolute; top:12px; right:16px; width:5px; height:5px;
+        border-radius:50%; background:#fff; z-index:4; pointer-events:none;
+        box-shadow:0 0 5px 1px rgba(255,255,255,0.6);
+        animation: vc-sparkle 3.4s ease-in-out infinite;
+    }
     .flip-name, .flip-role, .flip-meta, .flip-hint,
     .flip-back-title, .flip-back-body { position:relative; z-index:5; }
-    /* ex-card: semplice evidenziazione del bordo al passaggio del mouse, senza animazioni */
-    .ex-card:hover { border-color: var(--vc-accent); }
+    /* ex-card e block-seduta: sweep di luce al passaggio del mouse */
+    .ex-card, .block-seduta { position:relative; overflow:hidden; }
+    .ex-card::before, .block-seduta::before {
+        content:""; position:absolute; top:0; left:-80%; width:60%; height:100%;
+        background: linear-gradient(100deg, transparent, rgba(255,255,255,0.16), transparent);
+        transform: skewX(-18deg); pointer-events:none; opacity:0; z-index:1;
+    }
+    .ex-card:hover::before, .block-seduta:hover::before { opacity:1; animation: vc-shimmer .9s ease-out; }
+    .ex-card:hover { border-color: var(--vc-accent); box-shadow: 0 0 20px rgba(255,159,28,0.35), 0 6px 18px rgba(0,0,0,0.3); }
+    /* hero: bagliore pulsante + sweep continuo */
+    .vc-hero { position:relative; overflow:hidden; animation: vc-glow 4.5s ease-in-out infinite; }
+    .vc-hero::before {
+        content:""; position:absolute; top:0; left:-70%; width:50%; height:100%;
+        background: linear-gradient(100deg, transparent, rgba(255,255,255,0.13), transparent);
+        transform: skewX(-18deg); pointer-events:none;
+        animation: vc-shimmer 6s ease-in-out infinite;
+    }
+    .vc-hero > * { position:relative; z-index:2; }
+    /* pulsanti: piccolo riflesso di luce al hover */
+    .stButton>button { position:relative; overflow:hidden; }
+    .stButton>button::after {
+        content:""; position:absolute; top:0; left:-80%; width:55%; height:100%;
+        background: linear-gradient(100deg, transparent, rgba(255,255,255,0.35), transparent);
+        transform: skewX(-18deg); pointer-events:none; opacity:0;
+    }
+    .stButton>button:hover::after { opacity:1; animation: vc-shimmer .8s ease-out; }
 
-    /* ===== Foto giocatrice: zoom al passaggio del mouse + lightbox al click ===== */
-    .vc-foto-wrap { margin:4px 0 12px; }
-    .vc-foto-zoom { display:inline-flex; flex-direction:column; align-items:center; text-decoration:none; }
-    .vc-foto-thumb {
-        width:120px; height:120px; border-radius:14px; object-fit:cover;
-        border:2px solid var(--vc-border); cursor:zoom-in;
-        transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease;
-    }
-    .vc-foto-zoom:hover .vc-foto-thumb {
-        transform: scale(1.45); border-color: var(--vc-accent);
-        box-shadow: 0 10px 30px rgba(0,0,0,0.55); position:relative; z-index:20;
-    }
-    .vc-foto-cue { color:var(--vc-muted); font-size:.72rem; margin-top:8px; }
-    .vc-lightbox {
-        position:fixed; inset:0; background:rgba(5,10,20,0.92);
-        display:flex; align-items:center; justify-content:center;
-        opacity:0; visibility:hidden; z-index:99999; cursor:zoom-out;
-        transition: opacity .2s ease;
-    }
-    .vc-lightbox:target { opacity:1; visibility:visible; }
-    .vc-lightbox img {
-        max-width:88vw; max-height:88vh; border-radius:16px;
-        box-shadow:0 24px 70px rgba(0,0,0,0.65); border:3px solid var(--vc-accent);
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -1841,16 +1870,11 @@ if menu == "\U0001F465 Rosa":
                     else:
                         back_body = ("<div class='flip-back-body'><span class='flip-empty'>"
                                      "Nessun obiettivo inserito.</span>" + pres_line + inf_line + "</div>")
-                    _foto = str(g.get("Foto", "")).strip()
-                    if _foto:
-                        _foto_html = ("<img src='data:image/png;base64," + _foto + "' style='width:72px;height:72px;"
-                                      "border-radius:50%;object-fit:cover;border:2px solid " + col_r + "'>")
-                    else:
-                        _foto_html = "<div style='font-size:1.5rem'>" + emoji + "</div>"
+                    avatar_html = "<div class='flip-avatar' style='border-color:" + col_r + "'>" + emoji + "</div>"
                     st.markdown(
                         f"<div class='flip-card'><div class='flip-inner'>"
                         f"<div class='flip-front' style=\"border:1px solid {col_r}; box-shadow:0 0 10px {col_r}2e, inset 0 0 14px {col_r}10;\">"
-                        f"{_foto_html}"
+                        f"{avatar_html}"
                         f"<div class='flip-name'>#{_html.escape(str(g['Numero']))} {nome}</div>"
                         f"<div class='flip-role' style='color:{col_r}'>{ruolo_nome}</div>"
                         f"<div class='flip-meta'>{_html.escape(str(g['Altezza']))} cm \u00b7 {emoji} {_html.escape(str(g.get('Stato','')))}</div>"
@@ -1896,23 +1920,6 @@ if menu == "\U0001F465 Rosa":
                             forza = st.text_area("\U0001F4AA Punti di forza", value=g.get("Punti_forza", ""), height=70)
                             migliorare = st.text_area("\U0001F527 Aree da migliorare", value=g.get("Da_migliorare", ""), height=70)
                             lavoro = st.text_area("\U0001F3CB\uFE0F Lavoro individuale assegnato", value=g.get("Lavoro_individuale", ""), height=70)
-                            st.markdown("**\U0001F4F7 Foto**")
-                            _cur_foto = str(st.session_state.rosa[i].get("Foto", "")).strip()
-                            if _cur_foto:
-                                st.markdown(
-                                    "<div class='vc-foto-wrap'>"
-                                    "<a href='#zoomfoto_" + str(i) + "' class='vc-foto-zoom'>"
-                                    "<img src='data:image/png;base64," + _cur_foto + "' class='vc-foto-thumb'>"
-                                    "<span class='vc-foto-cue'>\U0001F50D passa il mouse o clicca per ingrandire</span></a>"
-                                    "<a href='#' class='vc-lightbox' id='zoomfoto_" + str(i) + "'>"
-                                    "<img src='data:image/png;base64," + _cur_foto + "'></a>"
-                                    "</div>",
-                                    unsafe_allow_html=True,
-                                )
-                            foto_up = st.file_uploader("Carica/aggiorna foto", type=["png", "jpg", "jpeg"], key=f"foto_{i}")
-                            rimuovi_foto = False
-                            if g.get("Foto"):
-                                rimuovi_foto = st.checkbox("\U0001F5D1\uFE0F Rimuovi foto", key=f"delfoto_{i}")
                             fc1, fc2 = st.columns(2)
                             salva = fc1.form_submit_button("\U0001F4BE Salva", use_container_width=True, type="primary")
                             elimina = fc2.form_submit_button("\U0001F5D1\uFE0F Elimina", use_container_width=True)
@@ -1931,12 +1938,7 @@ if menu == "\U0001F465 Rosa":
                                     st.session_state.rosa[i]["Punti_forza"] = forza.strip()
                                     st.session_state.rosa[i]["Da_migliorare"] = migliorare.strip()
                                     st.session_state.rosa[i]["Lavoro_individuale"] = lavoro.strip()
-                                    if rimuovi_foto:
-                                        st.session_state.rosa[i]["Foto"] = ""
-                                    elif foto_up is not None:
-                                        _fb = file_to_base64_png(foto_up)
-                                        if _fb:
-                                            st.session_state.rosa[i]["Foto"] = _fb
+                                    st.session_state.rosa[i].pop("Foto", None)
                                     save_state()
                                     st.success("Giocatrice aggiornata!")
                                     st.rerun()
