@@ -2599,6 +2599,50 @@ if menu == "\U0001F5D3\uFE0F Calendario":
         if not _sed_mese_cal:
             st.info("Nessuna seduta in questo mese.")
         _col_int = {"Scarico": "\U0001F7E2", "Medio": "\U0001F7E1", "Pre-partita": "\U0001F7E0", "Carico": "\U0001F534"}
+
+        # --- Gestione rapida: sposta la data o elimina ogni seduta del mese ---
+        if _sed_mese_cal:
+            with st.expander("\U0001F6E0\uFE0F Sposta la data o elimina una seduta", expanded=False):
+                st.caption("Cambia la data con la casella e premi 'Sposta': la seduta passa al mese corrispondente. "
+                           "Per eliminarla serve una seconda conferma.")
+                _conf_del = st.session_state.get("conferma_del", {}) or {}
+                for _s2 in _sed_mese_cal:
+                    _sid2 = _id_seduta(_s2)
+                    try:
+                        _d2 = date.fromisoformat(str(_s2.get("data", "")))
+                    except Exception:
+                        _d2 = date.today()
+                    _tt = sum(int(e.get("Durata_min", 0)) for e in _s2.get("esercizi", []))
+                    _rc1, _rc2, _rc3, _rc4 = st.columns([1, 3, 1, 1])
+                    _dnew = _rc1.date_input("Data", value=_d2, key=f"mgdata_{_sid2}",
+                                            format="DD/MM/YYYY", label_visibility="collapsed")
+                    _rc2.markdown("**" + _col_int.get(_s2.get("intensita"), "\u26AA") + " "
+                                  + _html.escape(str(_s2.get("obiettivo", ""))) + "** \u00b7 "
+                                  + str(_s2.get("intensita", "")) + " \u00b7 " + str(_tt) + " min")
+                    if _rc3.button("\U0001F4C5 Sposta", key=f"mgsposta_{_sid2}", use_container_width=True):
+                        _iso_new2 = _dnew.isoformat()
+                        if _iso_new2 != str(_s2.get("data", "")):
+                            _s2["data"] = _iso_new2
+                            save_state()
+                            st.session_state["cal_mese_sel"] = _iso_new2[:7]
+                            st.toast("Seduta spostata al " + _iso_new2 + ".")
+                            st.rerun()
+                        st.info("La data \u00e8 gi\u00e0 questa.")
+                    if _conf_del.get(_sid2):
+                        if _rc4.button("\u2705 Conferma elimina", key=f"mgdelyes_{_sid2}", use_container_width=True, type="primary"):
+                            st.session_state.sedute.remove(_s2)
+                            _conf_del.pop(_sid2, None)
+                            st.session_state["conferma_del"] = _conf_del
+                            save_state()
+                            st.toast("Seduta eliminata.")
+                            st.rerun()
+                    elif _rc4.button("\U0001F5D1\uFE0F Elimina", key=f"mgdel_{_sid2}", use_container_width=True):
+                        _conf_del[_sid2] = True
+                        st.session_state["conferma_del"] = _conf_del
+                        st.rerun()
+                    st.markdown("<hr style='margin:4px 0;border:none;border-top:1px solid var(--vc-card2)'>",
+                                unsafe_allow_html=True)
+
         for s in _sed_mese_cal:
             _sid = _id_seduta(s)
             tot = sum(int(e["Durata_min"]) for e in s["esercizi"])
@@ -2610,6 +2654,28 @@ if menu == "\U0001F5D3\uFE0F Calendario":
             except Exception:
                 _settimana = ""
             with st.expander(f"{_pallino} {_settimana}{_giorno} {_etichetta_mese(_mese_sel)} \u2014 {s['obiettivo']} \u00b7 {s['intensita']} \u00b7 {tot} min"):
+                # --- Data della seduta: modificabile in ogni momento ---
+                _dc1, _dc2 = st.columns([2, 1])
+                try:
+                    _data_obj = date.fromisoformat(str(s.get("data", "")))
+                except Exception:
+                    _data_obj = date.today()
+                _nuova_data = _dc1.date_input(
+                    "\U0001F4C5 Data della seduta", value=_data_obj,
+                    key=f"datased_{_sid}", format="DD/MM/YYYY",
+                    help="Cambia la data e premi 'Sposta': la seduta passa al giorno e al mese scelti.")
+                if _dc2.button("\U0001F4C5 Sposta", key=f"savedata_{_sid}", use_container_width=True):
+                    _iso_new = _nuova_data.isoformat()
+                    if _iso_new == str(s.get("data", "")):
+                        st.info("La data \u00e8 gi\u00e0 questa.")
+                    else:
+                        _iso_old = str(s.get("data", ""))
+                        s["data"] = _iso_new
+                        save_state()
+                        st.session_state["cal_mese_sel"] = _iso_new[:7]  # mostra il nuovo mese
+                        st.toast("Seduta spostata dal " + _iso_old + " al " + _iso_new + ".")
+                        st.rerun()
+
                 if s.get("presenti_nomi"):
                     st.caption("\u2705 Presenti: " + ", ".join(s["presenti_nomi"]))
                 if s.get("assenti_nomi"):
@@ -2746,10 +2812,24 @@ if menu == "\U0001F5D3\uFE0F Calendario":
                                    "Apri il terminale e scrivi:  pip install fpdf2  "
                                    "poi riavvia l'app. (Intanto puoi usare 'Scarica HTML' e, dal "
                                    "browser, Stampa > Salva come PDF.)")
-                if st.button("\U0001F5D1\uFE0F Elimina seduta", key=f"delsed_{_sid}"):
-                    st.session_state.sedute.remove(s)
-                    save_state()
-                    st.rerun()
+                # --- Eliminazione protetta (doppia conferma) ---
+                if st.session_state.get("conferma_del", {}).get(_sid):
+                    st.warning("Vuoi davvero eliminare questa seduta del " + str(s.get("data", ""))
+                               + " (" + str(s.get("obiettivo", "")) + ")? L'operazione non si pu\u00f2 annullare.")
+                    cdel1, cdel2 = st.columns(2)
+                    if cdel1.button("\u2705 S\u00ec, elimina", key=f"delyes_{_sid}", use_container_width=True, type="primary"):
+                        st.session_state.sedute.remove(s)
+                        st.session_state.get("conferma_del", {}).pop(_sid, None)
+                        save_state()
+                        st.toast("Seduta eliminata.")
+                        st.rerun()
+                    if cdel2.button("\u274C Annulla", key=f"delno_{_sid}", use_container_width=True):
+                        st.session_state.get("conferma_del", {}).pop(_sid, None)
+                        st.rerun()
+                else:
+                    if st.button("\U0001F5D1\uFE0F Elimina seduta", key=f"delsed_{_sid}", use_container_width=True):
+                        st.session_state["conferma_del"] = {_sid: True}
+                        st.rerun()
 
         st.markdown("---")
         st.markdown("### Distribuzione carichi \u2014 " + _etichetta_mese(_mese_sel))
