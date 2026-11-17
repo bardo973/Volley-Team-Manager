@@ -2473,12 +2473,53 @@ if menu == "\U0001F5D3\uFE0F Calendario":
         st.info("Nessuna seduta salvata. Generane una nella sezione **Programma Allenamenti**.")
     else:
         sedute = sorted(st.session_state.sedute, key=lambda s: s["data"])
-        st.markdown("### Sedute programmate")
+
+        # ---- Filtro per mese: menu tendina ----
+        _NOMI_MESI = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno",
+                      "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"]
+
+        def _etichetta_mese(ym):
+            try:
+                _y, _mm = str(ym).split("-")
+                return _NOMI_MESI[int(_mm) - 1].capitalize() + " " + _y
+            except Exception:
+                return str(ym)
+
+        _mesi = sorted({str(s.get("data", ""))[:7] for s in sedute if s.get("data")}, reverse=True)
+        st.markdown("### \U0001F4C6 Scegli il mese")
+        _mese_sel = st.selectbox(
+            "Mese",
+            _mesi,
+            format_func=lambda ym: _etichetta_mese(ym) + "  ("
+            + str(sum(1 for s in sedute if str(s.get("data", "")).startswith(ym))) + " sedute)",
+            key="cal_mese_sel",
+            help="Ogni mese raccoglie le sedute di allenamento con la loro data. "
+                 "Cambia voce per passare da un mese all'altro.",
+        )
+        _sed_mese_cal = [s for s in sedute if str(s.get("data", "")).startswith(_mese_sel)]
+        _min_mese = sum(sum(int(e.get("Durata_min", 0)) for e in s.get("esercizi", [])) for s in _sed_mese_cal)
+        _n_carico = sum(1 for s in _sed_mese_cal if s.get("intensita") == "Carico")
+        cm1, cm2, cm3, cm4 = st.columns(4)
+        cm1.metric("Sedute", len(_sed_mese_cal))
+        cm2.metric("Minuti totali", _min_mese)
+        cm3.metric("Sedute a carico", _n_carico)
+        cm4.metric("Giorni con seduta", len({s.get("data") for s in _sed_mese_cal}))
+
+        st.markdown("### Sedute di " + _etichetta_mese(_mese_sel))
+        if not _sed_mese_cal:
+            st.info("Nessuna seduta in questo mese.")
         _col_int = {"Scarico": "\U0001F7E2", "Medio": "\U0001F7E1", "Pre-partita": "\U0001F7E0", "Carico": "\U0001F534"}
-        for i, s in enumerate(sedute):
+        for s in _sed_mese_cal:
+            i = st.session_state.sedute.index(s)
             tot = sum(int(e["Durata_min"]) for e in s["esercizi"])
             _pallino = _col_int.get(s["intensita"], "\u26AA")
-            with st.expander(f"{_pallino} {s['data']} \u2014 {s['obiettivo']} \u00b7 {s['intensita']} \u00b7 {tot} min"):
+            _giorno = str(s.get("data", ""))[8:10].lstrip("0") or "?"
+            _settimana = ""
+            try:
+                _settimana = "\u00b7 " + ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"][date.fromisoformat(str(s["data"])).weekday()] + " "
+            except Exception:
+                _settimana = ""
+            with st.expander(f"{_pallino} {_settimana}{_giorno} {_etichetta_mese(_mese_sel)} \u2014 {s['obiettivo']} \u00b7 {s['intensita']} \u00b7 {tot} min"):
                 if s.get("presenti_nomi"):
                     st.caption("\u2705 Presenti: " + ", ".join(s["presenti_nomi"]))
                 if s.get("assenti_nomi"):
@@ -2620,13 +2661,18 @@ if menu == "\U0001F5D3\uFE0F Calendario":
                     st.rerun()
 
         st.markdown("---")
-        st.markdown("### Distribuzione carichi")
-        dfc = pd.DataFrame([{"Data": s["data"], "Intensit\u00e0": s["intensita"], "Obiettivo": s["obiettivo"]} for s in sedute])
-        st.dataframe(dfc, use_container_width=True, hide_index=True)
-        pesi = {"Scarico": 1, "Pre-partita": 2, "Medio": 2, "Carico": 3}
-        dfc["Carico"] = dfc["Intensit\u00e0"].map(pesi)
-        st.bar_chart(dfc.set_index("Data")["Carico"])
-        st.caption("Consiglio: evita due sedute a carico alto consecutive e programma uno scarico prima della gara.")
+        st.markdown("### Distribuzione carichi \u2014 " + _etichetta_mese(_mese_sel))
+        _src_car = _sed_mese_cal if _sed_mese_cal else []
+        dfc = pd.DataFrame([{"Data": s["data"], "Intensit\u00e0": s["intensita"], "Obiettivo": s["obiettivo"]} for s in _src_car],
+                           columns=["Data", "Intensit\u00e0", "Obiettivo"])
+        if dfc.empty:
+            st.caption("Nessuna seduta nel mese selezionato.")
+        else:
+            st.dataframe(dfc, use_container_width=True, hide_index=True)
+            pesi = {"Scarico": 1, "Pre-partita": 2, "Medio": 2, "Carico": 3}
+            dfc["Carico"] = dfc["Intensit\u00e0"].map(pesi)
+            st.bar_chart(dfc.set_index("Data")["Carico"])
+            st.caption("Consiglio: evita due sedute a carico alto consecutive e programma uno scarico prima della gara.")
 
         # ---- Riepilogo mensile delle note post-allenamento ----
         st.markdown("---")
@@ -2635,7 +2681,8 @@ if menu == "\U0001F5D3\uFE0F Calendario":
         if not _mesi_disp:
             st.caption("Nessuna seduta registrata.")
         else:
-            _mese_note = st.selectbox("Mese", _mesi_disp, key="mese_note_sel")
+            _mese_note = _mese_sel
+            st.caption("Note del mese scelto nel menu tendina: **" + _etichetta_mese(_mese_note) + "**.")
             _sed_mese = [s for s in sedute if s.get("data", "").startswith(_mese_note)]
             _con_note = [s for s in _sed_mese if (s.get("note") or "").strip()]
 
