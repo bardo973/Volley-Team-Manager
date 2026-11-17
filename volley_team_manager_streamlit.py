@@ -413,6 +413,47 @@ def esercizi_default_df():
 # ============================================================
 # STATO / PERSISTENZA (salvataggio atomico + backup .bak)
 # ============================================================
+def _nuovo_id_seduta():
+    """Identificatore univoco per una seduta (usato per le chiavi dei widget)."""
+    return "sd_" + datetime.now().strftime("%Y%m%d%H%M%S") + "_" + str(random.randint(1000, 9999))
+
+
+def _id_seduta(s):
+    """Restituisce l'ID univoco della seduta, creandolo se manca.
+    L'ID è indipendente dal contenuto: due sedute identiche restano distinte."""
+    try:
+        _sid = str(s.get("_id", "") or "").strip()
+    except AttributeError:
+        _sid = ""
+    if not _sid:
+        _sid = _nuovo_id_seduta()
+        try:
+            s["_id"] = _sid
+        except Exception:
+            pass
+    return _sid
+
+
+def _nuovo_id_ciclo():
+    """Identificatore univoco per macrocicli e microcicli."""
+    return "cy_" + datetime.now().strftime("%Y%m%d%H%M%S") + "_" + str(random.randint(1000, 9999))
+
+
+def _id_ciclo(c):
+    """Restituisce l'ID univoco del ciclo, creandolo se manca."""
+    try:
+        _cid = str(c.get("_id", "") or "").strip()
+    except AttributeError:
+        _cid = ""
+    if not _cid:
+        _cid = _nuovo_id_ciclo()
+        try:
+            c["_id"] = _cid
+        except Exception:
+            pass
+    return _cid
+
+
 def _state_dict():
     return {
         "rosa": st.session_state.rosa,
@@ -504,6 +545,9 @@ def _apply_data(data):
             if isinstance(_ex2, dict) and _ex2.get("Fase") in _MIGRA_FASE:
                 _ex2["Fase"] = _MIGRA_FASE[_ex2["Fase"]]
     st.session_state.sedute = _sedute
+    # migrazione: assegna un ID univoco alle sedute che non ce l'hanno
+    for _s0 in _sedute:
+        _id_seduta(_s0)
     st.session_state.macrocicli = data.get("macrocicli", [])
     st.session_state.microcicli = data.get("microcicli", [])
     sch = data.get("schema_settimanale")
@@ -2278,6 +2322,7 @@ if menu == "\U0001F4CB Programma Allenamenti":
                                     key="nota_nuova_seduta")
         if st.button("\U0001F4C5 Salva questa seduta nel calendario", type="primary"):
             ult["note"] = _nota_seduta.strip()
+            _id_seduta(ult)
             st.session_state.sedute.append(ult)
             save_state()
             st.success("Seduta salvata nel calendario!")
@@ -2555,7 +2600,7 @@ if menu == "\U0001F5D3\uFE0F Calendario":
             st.info("Nessuna seduta in questo mese.")
         _col_int = {"Scarico": "\U0001F7E2", "Medio": "\U0001F7E1", "Pre-partita": "\U0001F7E0", "Carico": "\U0001F534"}
         for s in _sed_mese_cal:
-            i = st.session_state.sedute.index(s)
+            _sid = _id_seduta(s)
             tot = sum(int(e["Durata_min"]) for e in s["esercizi"])
             _pallino = _col_int.get(s["intensita"], "\u26AA")
             _giorno = str(s.get("data", ""))[8:10].lstrip("0") or "?"
@@ -2577,9 +2622,9 @@ if menu == "\U0001F5D3\uFE0F Calendario":
                         _pres_corr = [n for n in (s.get("presenti_nomi") or []) if n in _nomi_rosa]
                         _sel_pres = st.multiselect(
                             "Chi era presente", _nomi_rosa, default=_pres_corr,
-                            key=f"editpres_{i}",
+                            key=f"editpres_{_sid}",
                             help="Aggiorna le atlete presenti: chi non selezioni risulter\u00e0 assente.")
-                        if st.button("\U0001F4BE Salva presenze", key=f"savepres_{i}", use_container_width=True):
+                        if st.button("\U0001F4BE Salva presenze", key=f"savepres_{_sid}", use_container_width=True):
                             _assenti_nomi = [n for n in _nomi_rosa if n not in _sel_pres]
                             s["presenti_nomi"] = _sel_pres
                             s["assenti_nomi"] = _assenti_nomi
@@ -2596,9 +2641,9 @@ if menu == "\U0001F5D3\uFE0F Calendario":
                 oc1, oc2 = st.columns([1, 3])
                 _ora_val = str(s.get("ora_inizio", "18:00"))
                 ora_inizio = oc1.text_input("\U0001F550 Ora inizio", value=_ora_val,
-                                            key=f"orai_{i}", help="Formato HH:MM (es. 18:00). "
+                                            key=f"orai_{_sid}", help="Formato HH:MM (es. 18:00). "
                                             "Gli orari di ogni esercizio si calcolano da qui.")
-                if oc2.button("\U0001F4BE Salva ora inizio", key=f"saveora_{i}"):
+                if oc2.button("\U0001F4BE Salva ora inizio", key=f"saveora_{_sid}"):
                     s["ora_inizio"] = ora_inizio.strip() or "18:00"
                     save_state()
                     st.success("Ora inizio salvata!")
@@ -2615,41 +2660,41 @@ if menu == "\U0001F5D3\uFE0F Calendario":
                     for j, ex in enumerate(es_cal):
                         st.markdown(f"**{j+1}. {_html.escape(str(ex['Nome']))}** \u00b7 {ex['Durata_min']} min \u00b7 {ex.get('Fase','')}")
                         kc1, kc2, kc3 = st.columns(3)
-                        cx_nome = kc1.text_input("Nome", value=str(ex["Nome"]), key=f"cal_nome_{i}_{j}")
-                        cx_dur = kc2.number_input("Durata (min)", 1, 60, int(ex["Durata_min"]), key=f"cal_dur_{i}_{j}")
+                        cx_nome = kc1.text_input("Nome", value=str(ex["Nome"]), key=f"cal_nome_{_sid}_{j}")
+                        cx_dur = kc2.number_input("Durata (min)", 1, 60, int(ex["Durata_min"]), key=f"cal_dur_{_sid}_{j}")
                         _liv_opt = ["Base", "Medio", "Avanzato"]
                         cx_liv = kc3.selectbox("Livello", _liv_opt,
                                                index=_liv_opt.index(ex["Livello"]) if ex.get("Livello") in _liv_opt else 0,
-                                               key=f"cal_liv_{i}_{j}")
-                        cx_desc = st.text_area("Descrizione", value=str(ex.get("Descrizione", "")), key=f"cal_desc_{i}_{j}", height=70)
-                        cx_var = st.text_input("Variante", value=str(ex.get("Varianti", "")), key=f"cal_var_{i}_{j}")
+                                               key=f"cal_liv_{_sid}_{j}")
+                        cx_desc = st.text_area("Descrizione", value=str(ex.get("Descrizione", "")), key=f"cal_desc_{_sid}_{j}", height=70)
+                        cx_var = st.text_input("Variante", value=str(ex.get("Varianti", "")), key=f"cal_var_{_sid}_{j}")
                         bcal1, bcal2, bcal3, bcal4 = st.columns(4)
-                        if bcal1.button("\U0001F4BE Salva", key=f"cal_save_{i}_{j}", use_container_width=True):
+                        if bcal1.button("\U0001F4BE Salva", key=f"cal_save_{_sid}_{j}", use_container_width=True):
                             ex["Nome"] = cx_nome.strip(); ex["Durata_min"] = int(cx_dur); ex["Livello"] = cx_liv
                             ex["Descrizione"] = cx_desc.strip(); ex["Varianti"] = cx_var.strip()
                             _m = _upsert_esercizio_libreria(ex)
                             save_state()
                             st.toast(_m)
                             st.rerun()
-                        if bcal2.button("\u2B06\uFE0F Su", key=f"cal_up_{i}_{j}", use_container_width=True, disabled=(j == 0)):
+                        if bcal2.button("\u2B06\uFE0F Su", key=f"cal_up_{_sid}_{j}", use_container_width=True, disabled=(j == 0)):
                             es_cal[j - 1], es_cal[j] = es_cal[j], es_cal[j - 1]; save_state(); st.rerun()
-                        if bcal3.button("\u2B07\uFE0F Gi\u00f9", key=f"cal_down_{i}_{j}", use_container_width=True, disabled=(j == len(es_cal) - 1)):
+                        if bcal3.button("\u2B07\uFE0F Gi\u00f9", key=f"cal_down_{_sid}_{j}", use_container_width=True, disabled=(j == len(es_cal) - 1)):
                             es_cal[j + 1], es_cal[j] = es_cal[j], es_cal[j + 1]; save_state(); st.rerun()
-                        if bcal4.button("\U0001F5D1\uFE0F Rimuovi", key=f"cal_del_{i}_{j}", use_container_width=True):
+                        if bcal4.button("\U0001F5D1\uFE0F Rimuovi", key=f"cal_del_{_sid}_{j}", use_container_width=True):
                             es_cal.pop(j); save_state(); st.rerun()
                         rc1, rc2 = st.columns([3, 1])
                         _idx_sel = nomi_lib.index(str(ex["Nome"])) if str(ex["Nome"]) in nomi_lib else 0
                         sub_sel = rc1.selectbox("Sostituisci con un esercizio della libreria", nomi_lib,
-                                                index=_idx_sel, key=f"cal_sub_{i}_{j}")
-                        if rc2.button("\U0001F501 Sostituisci", key=f"cal_subbtn_{i}_{j}", use_container_width=True):
+                                                index=_idx_sel, key=f"cal_sub_{_sid}_{j}")
+                        if rc2.button("\U0001F501 Sostituisci", key=f"cal_subbtn_{_sid}_{j}", use_container_width=True):
                             nuovo = st.session_state.esercizi[st.session_state.esercizi["Nome"] == sub_sel].iloc[0].to_dict()
                             nuovo["Fase"] = ex["Fase"]
                             es_cal[j] = nuovo; save_state(); st.rerun()
                         st.markdown("---")
                     ac1, ac2, ac3 = st.columns([2, 2, 1])
-                    add_fase = ac1.selectbox("Fase", FASI, key=f"cal_addfase_{i}")
-                    add_nome = ac2.selectbox("Esercizio", nomi_lib, key=f"cal_addnome_{i}")
-                    if ac3.button("\u2795 Aggiungi", key=f"cal_addbtn_{i}", use_container_width=True):
+                    add_fase = ac1.selectbox("Fase", FASI, key=f"cal_addfase_{_sid}")
+                    add_nome = ac2.selectbox("Esercizio", nomi_lib, key=f"cal_addnome_{_sid}")
+                    if ac3.button("\u2795 Aggiungi", key=f"cal_addbtn_{_sid}", use_container_width=True):
                         nuovo = st.session_state.esercizi[st.session_state.esercizi["Nome"] == add_nome].iloc[0].to_dict()
                         nuovo["Fase"] = add_fase
                         es_cal.append(nuovo)
@@ -2659,17 +2704,18 @@ if menu == "\U0001F5D3\uFE0F Calendario":
 
                 # --- Note post-allenamento (editabili) ---
                 _nota = st.text_area("\U0001F4DD Note post-allenamento", value=s.get("note", ""),
-                                     key=f"notacal_{i}",
+                                     key=f"notacal_{_sid}",
                                      placeholder="Com'\u00e8 andata, cosa migliorare la prossima volta...")
                 cbn1, cbn2, cbn3, cbn4 = st.columns(4)
-                if cbn1.button("\U0001F4BE Salva note", key=f"savenote_{i}", use_container_width=True):
+                if cbn1.button("\U0001F4BE Salva note", key=f"savenote_{_sid}", use_container_width=True):
                     s["note"] = _nota.strip()
                     save_state()
                     st.success("Note salvate!")
                     st.rerun()
-                if cbn2.button("\U0001F4CB Duplica seduta", key=f"dup_{i}", use_container_width=True):
+                if cbn2.button("\U0001F4CB Duplica seduta", key=f"dup_{_sid}", use_container_width=True):
                     import copy as _copy
                     _nuova = _copy.deepcopy(s)
+                    _nuova["_id"] = _nuovo_id_seduta()   # nuovo ID: la copia è una seduta distinta
                     _nuova["data"] = date.today().isoformat()
                     st.session_state.sedute.append(_nuova)
                     save_state()
@@ -2680,7 +2726,7 @@ if menu == "\U0001F5D3\uFE0F Calendario":
                     data=seduta_html_stampabile(s),
                     file_name="seduta_" + s["data"] + ".html",
                     mime="text/html",
-                    key=f"print_{i}",
+                    key=f"print_{_sid}",
                     use_container_width=True,
                 )
                 _ora_pdf = str(s.get("ora_inizio", ora_inizio.strip() or "18:00"))
@@ -2691,16 +2737,16 @@ if menu == "\U0001F5D3\uFE0F Calendario":
                         data=_pdf,
                         file_name="seduta_" + s["data"] + ".pdf",
                         mime="application/pdf",
-                        key=f"pdf_{i}",
+                        key=f"pdf_{_sid}",
                         use_container_width=True,
                     )
                 else:
-                    if cbn4.button("\U0001F4C4 Esporta PDF", key=f"pdfinfo_{i}", use_container_width=True):
+                    if cbn4.button("\U0001F4C4 Esporta PDF", key=f"pdfinfo_{_sid}", use_container_width=True):
                         st.warning("Per esportare in PDF manca il modulo **fpdf2**. "
                                    "Apri il terminale e scrivi:  pip install fpdf2  "
                                    "poi riavvia l'app. (Intanto puoi usare 'Scarica HTML' e, dal "
                                    "browser, Stampa > Salva come PDF.)")
-                if st.button("\U0001F5D1\uFE0F Elimina seduta", key=f"delsed_{i}"):
+                if st.button("\U0001F5D1\uFE0F Elimina seduta", key=f"delsed_{_sid}"):
                     st.session_state.sedute.remove(s)
                     save_state()
                     st.rerun()
@@ -2851,6 +2897,7 @@ if menu == "\U0001F9E9 Periodizzazione":
         if st.session_state.macrocicli:
             for i, m in enumerate(sorted(st.session_state.macrocicli, key=lambda x: x.get("inizio", ""))):
                 ni = st.session_state.macrocicli.index(m)
+                _mid = _id_ciclo(m)
                 with st.expander(f"\U0001F5FA\uFE0F {m['nome']} \u00b7 {m['fase']} \u00b7 {m.get('inizio','')} \u2192 {m.get('fine','')}"):
                     st.markdown(f"**Obiettivo:** {_html.escape(m.get('obiettivo','') or '\u2014')}")
                     if m.get("note"):
@@ -2858,7 +2905,7 @@ if menu == "\U0001F9E9 Periodizzazione":
                     # microcicli collegati
                     collegati = [mi for mi in st.session_state.microcicli if mi.get("macrociclo") == m["nome"]]
                     st.caption(f"\U0001F4C6 Microcicli collegati: {len(collegati)}")
-                    if st.button("\U0001F5D1\uFE0F Elimina macrociclo", key=f"ma_del_{ni}"):
+                    if st.button("\U0001F5D1\uFE0F Elimina macrociclo", key=f"ma_del_{_mid}"):
                         st.session_state.macrocicli.pop(ni)
                         save_state()
                         st.rerun()
@@ -2897,6 +2944,7 @@ if menu == "\U0001F9E9 Periodizzazione":
         if st.session_state.microcicli:
             for m in sorted(st.session_state.microcicli, key=lambda x: x.get("inizio", "")):
                 ni = st.session_state.microcicli.index(m)
+                _mid = _id_ciclo(m)
                 # quante sedute salvate sono gia' collegate a questo microciclo
                 etichetta = f"{m.get('macrociclo','')} \u00b7 {m.get('nome','')}"
                 svolte = sum(1 for s in st.session_state.sedute if s.get("microciclo") == etichetta)
@@ -2904,7 +2952,7 @@ if menu == "\U0001F9E9 Periodizzazione":
                     st.markdown(f"Inizio: **{m.get('inizio','')}** \u00b7 sedute previste: **{m.get('n_sedute',0)}** \u00b7 svolte: **{svolte}**")
                     if m.get("note"):
                         st.caption(m["note"])
-                    if st.button("\U0001F5D1\uFE0F Elimina microciclo", key=f"mi_del_{ni}"):
+                    if st.button("\U0001F5D1\uFE0F Elimina microciclo", key=f"mi_del_{_mid}"):
                         st.session_state.microcicli.pop(ni)
                         save_state()
                         st.rerun()
