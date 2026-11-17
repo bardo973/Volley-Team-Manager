@@ -2491,7 +2491,9 @@ if menu == "\U0001F5D3\uFE0F Calendario":
             "Mese",
             _mesi,
             format_func=lambda ym: _etichetta_mese(ym) + "  ("
-            + str(sum(1 for s in sedute if str(s.get("data", "")).startswith(ym))) + " sedute)",
+            + str(sum(1 for s in sedute if str(s.get("data", "")).startswith(ym))) + " sedute \u00b7 "
+            + str(sum(1 for s in sedute if str(s.get("data", "")).startswith(ym)
+                      and str(s.get("data", "")) >= date.today().isoformat())) + " rimanenti)",
             key="cal_mese_sel",
             help="Ogni mese raccoglie le sedute di allenamento con la loro data. "
                  "Cambia voce per passare da un mese all'altro.",
@@ -2499,11 +2501,54 @@ if menu == "\U0001F5D3\uFE0F Calendario":
         _sed_mese_cal = [s for s in sedute if str(s.get("data", "")).startswith(_mese_sel)]
         _min_mese = sum(sum(int(e.get("Durata_min", 0)) for e in s.get("esercizi", [])) for s in _sed_mese_cal)
         _n_carico = sum(1 for s in _sed_mese_cal if s.get("intensita") == "Carico")
+
+        # ---- Sedute rimanenti nel mese (da oggi in poi) ----
+        _oggi_iso = date.today().isoformat()
+        _rimanenti = sorted([s for s in _sed_mese_cal if str(s.get("data", "")) >= _oggi_iso],
+                            key=lambda s: s.get("data", ""))
+        _n_rimanenti = len(_rimanenti)
+        _min_rimanenti = sum(sum(int(e.get("Durata_min", 0)) for e in s.get("esercizi", [])) for s in _rimanenti)
+        _n_fatte = len([s for s in _sed_mese_cal if str(s.get("data", "")) < _oggi_iso])
+        _prossima = _rimanenti[0] if _rimanenti else None
+
         cm1, cm2, cm3, cm4 = st.columns(4)
-        cm1.metric("Sedute", len(_sed_mese_cal))
-        cm2.metric("Minuti totali", _min_mese)
-        cm3.metric("Sedute a carico", _n_carico)
-        cm4.metric("Giorni con seduta", len({s.get("data") for s in _sed_mese_cal}))
+        cm1.metric("Sedute nel mese", len(_sed_mese_cal))
+        cm2.metric("\U0001F51C Sedute rimanenti", _n_rimanenti,
+                   delta=("-" + str(_n_fatte) + " gia fatte") if _n_fatte else None,
+                   delta_color="off",
+                   help="Sedute del mese da oggi in poi (oggi incluso). Le sedute con data passata sono conteggiate come fatte.")
+        cm3.metric("Minuti rimanenti", _min_rimanenti)
+        cm4.metric("Sedute a carico", _n_carico)
+
+        # Barra di avanzamento del mese
+        if _sed_mese_cal:
+            _perc_fatte = int(round(100 * _n_fatte / len(_sed_mese_cal)))
+            st.markdown(
+                "<div style='margin:2px 0 10px'>"
+                "<div style='color:var(--vc-muted);font-size:.85rem;margin-bottom:4px'>"
+                "Avanzamento del mese: <b>" + str(_n_fatte) + " fatti</b> \u00b7 "
+                "<b>" + str(_n_rimanenti) + " rimanenti</b> su " + str(len(_sed_mese_cal)) + "</div>"
+                "<div style='background:var(--vc-card2);border-radius:8px;height:14px;overflow:hidden'>"
+                "<div style='height:14px;width:" + str(_perc_fatte) + "%;border-radius:8px;"
+                "background:linear-gradient(90deg,var(--vc-accent),var(--vc-accent2))'></div></div></div>",
+                unsafe_allow_html=True,
+            )
+        if _prossima is not None:
+            try:
+                _gg_prox = (date.fromisoformat(str(_prossima["data"])) - date.today()).days
+                _quando_prox = ("oggi" if _gg_prox == 0 else
+                                ("domani" if _gg_prox == 1 else "tra " + str(_gg_prox) + " giorni"))
+            except Exception:
+                _quando_prox = ""
+            st.markdown(
+                "<div class='block-seduta'>\U0001F4CC <b>Prossima seduta del mese:</b> "
+                + str(_prossima.get("data", "")) + (" (" + _quando_prox + ")" if _quando_prox else "")
+                + " \u00b7 \U0001F3AF " + _html.escape(str(_prossima.get("obiettivo", "")))
+                + " \u00b7 " + _html.escape(str(_prossima.get("intensita", ""))) + "</div>",
+                unsafe_allow_html=True,
+            )
+        elif _sed_mese_cal:
+            st.caption("\u2705 Nessuna seduta rimanente in " + _etichetta_mese(_mese_sel) + ": mese completato.")
 
         st.markdown("### Sedute di " + _etichetta_mese(_mese_sel))
         if not _sed_mese_cal:
