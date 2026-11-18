@@ -2180,6 +2180,163 @@ def genera_seduta_multi(obiettivi_list, durata_tot, intensita, n_presenti,
     return seduta, budget
 
 # ============================================================
+# COMPLETAMENTO SEDUTA CON L'ASSISTENTE (motore locale, offline)
+# ============================================================
+CATEGORIE_LIBRERIA = ["Tutte le categorie", "Attacco", "Difesa", "Ricezione", "Sei contro sei"]
+
+
+def filtra_categoria(df, categoria):
+    """Filtra il database degli esercizi con il menu a tendina delle categorie.
+    - Attacco / Ricezione: esercizi di quel fondamentale
+    - Difesa: difesa + muro (di solito si allenano insieme)
+    - Sei contro sei: tutto il gioco 6vs6, cioe' la fase Globale"""
+    if df is None or len(df) == 0:
+        return df
+    if not categoria or categoria == CATEGORIE_LIBRERIA[0]:
+        return df
+    if categoria == "Difesa":
+        return df[df["Fondamentale"].isin(["Difesa", "Muro"])]
+    if categoria == "Sei contro sei":
+        testo = (df["Nome"].astype(str) + " " + df["Descrizione"].astype(str)
+                 + " " + df["Varianti"].astype(str)).str.lower()
+        giochi = testo.str.contains("6vs6|6 vs 6|6v6|6 contro 6|sei contro sei", regex=True, na=False)
+        return df[(df["Fase"] == "Globale") | giochi]
+    return df[df["Fondamentale"] == categoria]
+
+
+def _budget_fasi_ia(durata_tot, intensita, fase_macro=None):
+    """Minuti da dedicare a ogni fase: stessa struttura del generatore,
+    corretta con i moltiplicatori della fase del macrociclo."""
+    base = _durata_fasi(durata_tot, intensita)
+    mult = _quote_macro(fase_macro)
+    pesata = {f: base.get(f, 0) * mult.get(f, 1.0) for f in FASI}
+    somma = sum(pesata.values()) or 1
+    return {f: max(5, round(durata_tot * (pesata[f] / somma))) for f in FASI}
+
+
+def _pool_fase_ia(df, fase, fondamentali, obiettivi, n_presenti):
+    """Esercizi adatti a una fase, filtrati per numero di giocatrici, tema della
+    seduta e obiettivi (i piu' centrati in cima). Se con le sole giocatrici
+    presenti non c'e' nulla, allarga a tutta la libreria: meglio un esercizio
+    in piu' da adattare che una fase vuota."""
+    def per_fase(d):
+        if fase == "Riscaldamento":
+            return d[d["Fase"] == "Riscaldamento"]
+        if fase == "Sintetica":
+            tecnica = d[d["Fase"] == "Sintetica"]
+            individuale = d[(d["Fase"] == "Centrale") & (d["Min_Giocatrici"] <= 4)]
+            p = pd.concat([tecnica, individuale]).drop_duplicates(subset=["Nome"])
+            return p if not p.empty else d[d["Fase"] == "Centrale"]
+        if fase == "Globale":
+            p = d[d["Fase"] == "Globale"]
+            return p if not p.empty else d[d["Fase"].isin(["Globale", "Centrale"])]
+        return d[d["Fase"] == fase]
+
+    d_no = df[df["Min_Giocatrici"] <= max(int(n_presenti), 1)]
+    pool = per_fase(d_no)
+    if pool.empty:
+        pool = per_fase(df)
+    if pool.empty:
+        pool = df
+    if fondamentali and fase in ("Sintetica", "Centrale", "Globale"):
+        in_tema = pool[pool["Fondamentale"].isin(fondamentali)]
+        if not in_tema.empty:
+            pool = in_tema
+    if obiettivi:
+        pool = pool.assign(_pri=(~pool["Obiettivo"].isin(obiettivi)).astype(int))
+        pool = pool.sort_values("_pri", kind="stable").drop(columns="_pri")
+    return pool
+
+
+def completa_seduta_ia(scelti, obiettivi_list, durata_tot, intensita, n_presenti,
+                       fase_macro=None, fondamentali=None, seed=None):
+    """Completa la seduta partendo dagli esercizi scelti dal coach.
+    Gli esercizi scelti restano dove sono, il motore aggiunge il resto:
+    riscaldamento, completamento delle fasi, gioco 6 contro 6 e defaticamento,
+    distribuendo i minuti sulla durata richiesta. Tutto in locale, gratis."""
+    rng = random.Random(seed)
+    obiettivi_list = [o for o in (obiettivi_list or []) if o]
+    fondamentali = [f for f in (fondamentali or []) if f]
+    df = st.session_state.esercizi.copy()
+    budget = _budget_fasi_ia(durata_tot, intensita, fase_macro)
+
+    # 1) gli esercizi scelti dal coach restano, ognuno nella sua fase
+    seduta = []
+    usati = set()
+    for ex in (scelti or []):
+        ex = dict(ex)
+        nome = str(ex.get("Nome", ""))
+        if nome in usati:
+            continue
+        fase = _fase_norm(ex.get("Fase", "Centrale"))
+        ex["Fase"] = fase if fase in FASI else "Centrale"
+        seduta.append(ex)
+        usati.add(nome)
+
+    # 2) minuti gia' occupati dal coach in ogni fase
+    impegnati = {f: sum(int(e.get("Durata_min", 10)) for e in seduta if e["Fase"] == f) for f in FASI}
+
+    # 3) completa ogni fase fino al suo budget
+    for fase in FASI:
+        restante = max(budget[fase], impegnati[fase]) - impegnati[fase]
+        if restante < 5:
+            continue
+        cand = []
+        # tre tentativi: 1) presenti e tema  2) tutte le giocatrici  3) senza tema
+        for _tent in range(3):
+            _tema = fondamentali if _tent < 2 else []
+            _n = int(n_presenti) if _tent == 0 else 99
+            pool = _pool_fase_ia(df, fase, _tema, obiettivi_list, _n)
+            cand = [r for r in pool.to_dict("records") if str(r.get("Nome", "")) not in usati]
+            if cand:
+                break
+        if fase == "Riscaldamento":
+            # il riscaldamento parte sempre dal fisico / condizione fisica
+            fisico = [r for r in cand if r.get("Fondamentale") == "Fisico" or r.get("Obiettivo") == "Condizione fisica"]
+            _ids_fis = {id(r) for r in fisico}
+            altri = [r for r in cand if id(r) not in _ids_fis]
+            rng.shuffle(fisico)
+            rng.shuffle(altri)
+            cand = fisico + altri
+        elif fase == "Globale":
+            giochi = [r for r in cand if r.get("Fase") == "Globale"]
+            rng.shuffle(giochi)
+            cand = giochi or cand
+            rng.shuffle(cand)
+        else:
+            rng.shuffle(cand)
+        for ex in cand:
+            if restante < 5:
+                break
+            ex = dict(ex)
+            dur = max(5, int(ex.get("Durata_min", 10)))
+            ex["Durata_min"] = int(min(dur, restante))
+            ex["Fase"] = fase
+            seduta.append(ex)
+            usati.add(str(ex.get("Nome", "")))
+            impegnati[fase] += int(ex["Durata_min"])
+            restante -= int(ex["Durata_min"])
+
+    # 4) ordine delle fasi
+    ordine = {f: k for k, f in enumerate(FASI)}
+    seduta.sort(key=lambda x: ordine.get(x["Fase"], 99))
+
+    # 5) bilancia i minuti totali sulla durata richiesta
+    tot = sum(int(e["Durata_min"]) for e in seduta)
+    if seduta and tot > 0 and tot != int(durata_tot):
+        fattore = float(durata_tot) / float(tot)
+        for e in seduta:
+            e["Durata_min"] = max(5, int(round(int(e["Durata_min"]) * fattore)))
+        # ritocco finale sull'esercizio piu' lungo, per centrare la durata richiesta
+        delta = int(durata_tot) - sum(int(e["Durata_min"]) for e in seduta)
+        if delta:
+            i_max = max(range(len(seduta)), key=lambda k: int(seduta[k]["Durata_min"]))
+            nuovo = int(seduta[i_max]["Durata_min"]) + delta
+            if nuovo >= 5:
+                seduta[i_max]["Durata_min"] = nuovo
+    return seduta, budget
+
+# ============================================================
 # ESERCIZI DA INTERNET
 # ============================================================
 KEYWORDS_OBJ = {
@@ -2751,7 +2908,8 @@ if menu == "\U0001F465 Rosa":
 # ============================================================
 if menu == "\U0001F4CB Programma Allenamenti":
     st.header("\U0001F4CB Programma Allenamenti")
-    st.caption("Imposta l'obiettivo della seduta: il generatore compone riscaldamento, parte tecnica, situazionale e defaticamento con esercizi coerenti dalla libreria.")
+    st.caption("Imposta l'obiettivo della seduta: il generatore compone riscaldamento, parte tecnica, situazionale e defaticamento con esercizi coerenti dalla libreria. "
+               "Oppure scegli tu gli esercizi e premi **Completa con l'IA**: l'assistente (in locale, gratis) riempie il resto della seduta.")
 
     with st.expander("\u2139\uFE0F Come \u00e8 strutturata la seduta (5 fasi)"):
         st.markdown(
@@ -2898,29 +3056,64 @@ if menu == "\U0001F4CB Programma Allenamenti":
     n_presenti = st.number_input("Numero di giocatrici presenti", min_value=1, max_value=30,
                                  value=max(default_n, 1))
 
-    cga, cgb = st.columns(2)
-    with cga:
-        genera = st.button("\u26A1 Genera seduta", type="primary", use_container_width=True)
-    with cgb:
-        rigenera = st.button("\U0001F504 Proponi variante", use_container_width=True)
+    # ---- Scegli tu gli esercizi: l'assistente completa il resto ----
+    st.markdown("---")
+    st.markdown("### ✍️ Scegli tu gli esercizi, l'assistente completa il resto")
+    st.caption("Seleziona gli esercizi che vuoi mettere tu: l'assistente (gratis, in locale, senza internet) "
+               "aggiunge il riscaldamento, completa le fasi, inserisce il gioco 6 contro 6 e il defaticamento, "
+               "calcolando i minuti sulla durata scelta. Poi correggi tutto qui sotto come sempre.")
+    cat_scelta = st.selectbox("Categoria esercizi", CATEGORIE_LIBRERIA, index=0,
+                              help="Attacco, Difesa (con il muro), Ricezione, Sei contro sei (gioco 6vs6).")
+    _df_cat = filtra_categoria(st.session_state.esercizi, cat_scelta)
+    _nomi_validi = set(st.session_state.esercizi["Nome"].astype(str))
+    _gia_scelti = [n for n in st.session_state.get("ia_scelti", []) if n in _nomi_validi]
+    _opzioni_ia = list(dict.fromkeys(_gia_scelti + [n for n in _df_cat["Nome"].astype(str) if n in _nomi_validi]))
+    scelti_nomi = st.multiselect("Esercizi scelti da me", _opzioni_ia, key="ia_scelti",
+                                 placeholder="Cerca o scegli dalla lista...")
+    st.caption(f"{len(_opzioni_ia)} esercizi in questa categoria · {len(scelti_nomi)} scelti da te")
 
-    if genera or rigenera:
-        seed = random.randint(0, 999999) if rigenera else 42
+    cga, cgb, cgc = st.columns(3)
+    with cga:
+        completa = st.button("🤖 Completa con l'IA", type="primary", use_container_width=True)
+    with cgb:
+        genera = st.button("⚡ Genera seduta", use_container_width=True)
+    with cgc:
+        rigenera = st.button("🔄 Proponi variante", use_container_width=True)
+
+    if completa or genera or rigenera:
+        seed = 42 if (genera and not rigenera and not completa) else random.randint(0, 999999)
         obj_eff = obiettivi or [OBIETTIVI[0]]
-        seduta, budget = genera_seduta_multi(obj_eff, durata, intensita, int(n_presenti),
-                                             fase_macro=fase_macro, prevenzione=prevenzione,
-                                             fondamentali=fondamentali_tema or None, seed=seed)
-        st.session_state._ultima_seduta = {
-            "data": data_seduta.isoformat(), "obiettivo": " + ".join(obj_eff),
-            "intensita": intensita, "durata": int(durata),
-            "presenti": int(n_presenti),
-            "presenti_nomi": [g["Nome"] for g in presenti],
-            "assenti_nomi": [g["Nome"] for g in assenti],
-            "composizione": conta_ruoli(presenti) if presenti else {},
-            "microciclo": (f"{micro_sel.get('macrociclo','')} \u00b7 {micro_sel.get('nome','')}" if micro_sel else ""),
-            "fase_macro": fase_macro or "",
-            "esercizi": seduta,
-        }
+        seduta, budget = [], {}
+        if completa:
+            _scelti_rec = []
+            for _n in scelti_nomi:
+                _r = st.session_state.esercizi[st.session_state.esercizi["Nome"] == _n]
+                if not _r.empty:
+                    _scelti_rec.append(_r.iloc[0].to_dict())
+            if not _scelti_rec:
+                st.warning("Scegli almeno un esercizio qui sopra: l'assistente costruisce la seduta intorno ai tuoi esercizi.")
+            else:
+                seduta, budget = completa_seduta_ia(
+                    _scelti_rec, obj_eff, durata, intensita, int(n_presenti),
+                    fase_macro=fase_macro, fondamentali=fondamentali_tema or None, seed=seed)
+                if seduta:
+                    st.success("Fatto: ho completato la seduta intorno ai tuoi esercizi. Controlla e correggi qui sotto se serve.")
+        else:
+            seduta, budget = genera_seduta_multi(obj_eff, durata, intensita, int(n_presenti),
+                                                fase_macro=fase_macro, prevenzione=prevenzione,
+                                                fondamentali=fondamentali_tema or None, seed=seed)
+        if seduta:
+            st.session_state._ultima_seduta = {
+                "data": data_seduta.isoformat(), "obiettivo": " + ".join(obj_eff),
+                "intensita": intensita, "durata": int(durata),
+                "presenti": int(n_presenti),
+                "presenti_nomi": [g["Nome"] for g in presenti],
+                "assenti_nomi": [g["Nome"] for g in assenti],
+                "composizione": conta_ruoli(presenti) if presenti else {},
+                "microciclo": (f"{micro_sel.get('macrociclo','')} \u00b7 {micro_sel.get('nome','')}" if micro_sel else ""),
+                "fase_macro": fase_macro or "",
+                "esercizi": seduta,
+            }
 
     ult = st.session_state.get("_ultima_seduta")
     if ult:
@@ -3073,13 +3266,17 @@ if menu == "\U0001F4DA Libreria Esercizi":
             else:
                 st.warning("Serve almeno il nome dell'esercizio.")
 
-    c1, c2, c3 = st.columns(3)
-    f_fond = c1.multiselect("Fondamentale", FONDAMENTALI)
-    f_obj = c2.multiselect("Obiettivo", OBIETTIVI)
-    f_fase = c3.multiselect("Fase", FASI)
-    testo = st.text_input("\U0001F50E Cerca per nome o descrizione")
-
-    vista = df.copy()
+    st.markdown("### \U0001F50E Cerca nel database degli esercizi")
+    cat_lib = st.selectbox("Categoria", CATEGORIE_LIBRERIA, index=0, key="lib_categoria",
+                           help="Attacco, Difesa (con il muro), Ricezione, Sei contro sei (gioco 6vs6).")
+    vista = filtra_categoria(df, cat_lib)
+    st.caption("  \u00b7  ".join(f"{_c}: {len(filtra_categoria(df, _c))}" for _c in CATEGORIE_LIBRERIA[1:]))
+    with st.expander("\u2795 Altri filtri (fondamentale, obiettivo, fase, ricerca per nome)"):
+        c1, c2, c3 = st.columns(3)
+        f_fond = c1.multiselect("Fondamentale", FONDAMENTALI, key="lib_f_fond")
+        f_obj = c2.multiselect("Obiettivo", OBIETTIVI, key="lib_f_obj")
+        f_fase = c3.multiselect("Fase", FASI, key="lib_f_fase")
+        testo = st.text_input("\U0001F50E Cerca per nome o descrizione", key="lib_testo")
     if f_fond:
         vista = vista[vista["Fondamentale"].isin(f_fond)]
     if f_obj:
