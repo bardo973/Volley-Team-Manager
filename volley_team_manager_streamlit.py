@@ -1364,6 +1364,409 @@ def _pad_html_fallback(s, key_prefix, altezza=420):
     _html_comp(_doc, height=int(altezza) + 90, scrolling=False)
 
 
+# ============================================================
+# FOGLIO DA SCRIVERE COL PENCIL (funziona subito, senza installazioni)
+# ============================================================
+_PAD_REG = {"comp": None, "tried": False}
+
+_PAD_HTML = """
+<div id="vcpad">
+  <div class="vcbar">
+    <span class="vclab">Colore</span>
+    <button type="button" class="vcbtn vcsw on" data-c="#1b1b1b" style="background:#1b1b1b"></button>
+    <button type="button" class="vcbtn vcsw" data-c="#1d4ed8" style="background:#1d4ed8"></button>
+    <button type="button" class="vcbtn vcsw" data-c="#c81e1e" style="background:#c81e1e"></button>
+    <button type="button" class="vcbtn vcsw" data-c="#15803d" style="background:#15803d"></button>
+    <button type="button" class="vcbtn vcsw" data-c="#b45309" style="background:#b45309"></button>
+    <span class="vcsep"></span>
+    <button type="button" class="vcbtn vcsz" data-s="3">Fine</button>
+    <button type="button" class="vcbtn vcsz on" data-s="5">Media</button>
+    <button type="button" class="vcbtn vcsz" data-s="12">Grossa</button>
+    <span class="vcsep"></span>
+    <button type="button" class="vcbtn" id="vcgomma">Gomma</button>
+    <button type="button" class="vcbtn" id="vcannulla">Annulla</button>
+    <button type="button" class="vcbtn" id="vcpulisci">Pulisci</button>
+    <button type="button" class="vcbtn" id="vcscorri">Scorri la pagina</button>
+    <button type="button" class="vcbtn vcprim" id="vcsalva">SALVA NEL FOGLIO</button>
+  </div>
+  <canvas class="vccv" id="vccv"></canvas>
+  <div class="vcstato" id="vcstato">Scrivi con la Pencil (o col dito). Poi premi SALVA NEL FOGLIO.</div>
+</div>
+"""
+
+_PAD_CSS = """
+#vcpad { font-family: -apple-system, 'Segoe UI', Arial, sans-serif; }
+.vcbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0 0 8px 0; }
+.vclab { font-size: 13px; font-weight: 700; color: #6b7789; margin-right: 2px; }
+.vcbtn { border: 1px solid #cfd6e2; background: #f4f6fa; border-radius: 10px;
+  padding: 9px 13px; font-size: 15px; font-weight: 700; color: #1a2233;
+  min-height: 44px; cursor: pointer; touch-action: manipulation; }
+.vcbtn.on { outline: 3px solid #ff9f1c; outline-offset: 1px; }
+.vcsw { width: 42px; height: 42px; padding: 0; border-radius: 50%; border: 2px solid #ffffff;
+  box-shadow: 0 0 0 1px #cfd6e2; }
+.vcprim { background: #ff9f1c; border-color: #e08b12; color: #241a05; font-size: 15px; }
+.vcsep { width: 1px; height: 26px; background: #dfe5ee; margin: 0 3px; }
+.vccv { display: block; width: 100%; height: auto; border: 1px solid #d7dce6;
+  border-radius: 10px; background: #ffffff; touch-action: none; cursor: crosshair;
+  -webkit-user-select: none; user-select: none; }
+.vccv.scorri { pointer-events: none; }
+.vcstato { font-size: 13px; color: #8a97ab; margin-top: 6px; }
+"""
+
+_PAD_JS = r'''
+export default function (component) {
+  const data = component.data || {};
+  const setStateValue = component.setStateValue;
+  const root = component.parentElement.querySelector('#vcpad');
+  if (!root) { return; }
+
+  const id = String(data.pad || 'foglio');
+  const W = Math.max(240, parseInt(data.w, 10) || 820);
+  const H = Math.max(240, parseInt(data.h, 10) || 1100);
+  const REG = window.__vcPads = window.__vcPads || {};
+  const S = REG[id] || (REG[id] = { strokes: [], color: '#1b1b1b', size: 5, erase: false, base: null });
+
+  const cv = root.querySelector('#vccv');
+  const stat = root.querySelector('#vcstato');
+  cv.width = W;
+  cv.height = H;
+  const g = cv.getContext('2d');
+
+  const bgC = document.createElement('canvas');
+  bgC.width = W; bgC.height = H;
+  const bgX = bgC.getContext('2d');
+  const inC = document.createElement('canvas');
+  inC.width = W; inC.height = H;
+  const inX = inC.getContext('2d');
+
+  let baseImg = null;
+  let drawing = false;
+  let cur = null;
+  let raf = 0;
+  let scorri = false;
+  let bgUrl = null;
+  let armPulisci = false;
+
+  function paint() {
+    raf = 0;
+    try {
+      g.clearRect(0, 0, W, H);
+      g.fillStyle = '#ffffff';
+      g.fillRect(0, 0, W, H);
+      g.drawImage(bgC, 0, 0);
+      g.drawImage(inC, 0, 0);
+    } catch (e) {}
+  }
+  function paintSoon() { if (!raf) { raf = requestAnimationFrame(paint); } }
+
+  function seg(x0, y0, x1, y1, w, erase, color) {
+    inX.save();
+    inX.lineCap = 'round';
+    inX.lineJoin = 'round';
+    inX.lineWidth = Math.max(1, w);
+    if (erase) {
+      inX.globalCompositeOperation = 'destination-out';
+      inX.strokeStyle = 'rgba(0,0,0,1)';
+    } else {
+      inX.globalCompositeOperation = 'source-over';
+      inX.strokeStyle = color;
+    }
+    inX.beginPath();
+    inX.moveTo(x0, y0);
+    inX.lineTo(x1, y1);
+    inX.stroke();
+    inX.restore();
+  }
+
+  function drawStroke(s) {
+    if (!s.p || !s.p.length) { return; }
+    if (s.p.length === 1) {
+      seg(s.p[0][0], s.p[0][1], s.p[0][0] + 0.7, s.p[0][1] + 0.7, s.p[0][2], s.e, s.c);
+    }
+    for (let j = 1; j < s.p.length; j++) {
+      seg(s.p[j - 1][0], s.p[j - 1][1], s.p[j][0], s.p[j][1], s.p[j][2], s.e, s.c);
+    }
+  }
+
+  function replay() {
+    inX.clearRect(0, 0, W, H);
+    if (baseImg) {
+      try { inX.drawImage(baseImg, 0, 0, W, H); } catch (e) {}
+    }
+    for (let i = 0; i < S.strokes.length; i++) { drawStroke(S.strokes[i]); }
+    paint();
+  }
+
+  function stato(txt, colore) {
+    if (stat) {
+      stat.textContent = txt;
+      stat.style.color = colore || '#8a97ab';
+    }
+  }
+
+  function loadBg(url) {
+    url = url || '';
+    bgX.clearRect(0, 0, W, H);
+    bgX.fillStyle = '#ffffff';
+    bgX.fillRect(0, 0, W, H);
+    bgUrl = url;
+    if (!url) { paint(); return; }
+    const im = new Image();
+    im.onload = function () {
+      if (bgUrl !== url) { return; }
+      bgX.clearRect(0, 0, W, H);
+      bgX.fillStyle = '#ffffff';
+      bgX.fillRect(0, 0, W, H);
+      bgX.drawImage(im, 0, 0, W, H);
+      paint();
+    };
+    im.onerror = function () { paint(); };
+    im.src = url;
+  }
+
+  function loadInk(url) {
+    url = url || '';
+    if (url === S.base && (baseImg || !url)) { return; }
+    if (!url) {
+      baseImg = null;
+      S.base = '';
+      S.strokes = [];
+      replay();
+      return;
+    }
+    if (url !== S.base) { S.strokes = []; }
+    const im = new Image();
+    im.onload = function () {
+      baseImg = im;
+      S.base = url;
+      replay();
+    };
+    im.onerror = function () {};
+    im.src = url;
+  }
+
+  function pos(ev) {
+    const r = cv.getBoundingClientRect();
+    return [(ev.clientX - r.left) * W / Math.max(1, r.width),
+            (ev.clientY - r.top) * H / Math.max(1, r.height)];
+  }
+
+  function pressione(ev) {
+    const p = (ev.pressure && ev.pressure > 0) ? ev.pressure : 0.5;
+    return 0.55 + 1.05 * p;
+  }
+
+  if (S.cv !== cv) {
+    S.cv = cv;
+    cv.addEventListener('pointerdown', function (ev) {
+      if (scorri) { return; }
+      ev.preventDefault();
+      try { cv.setPointerCapture(ev.pointerId); } catch (e) {}
+      drawing = true;
+      const q = pos(ev);
+      const z = S.erase ? Math.max(16, S.size * 3) : S.size;
+      cur = { c: S.color, e: S.erase, z: z, p: [[q[0], q[1], z * pressione(ev)]] };
+      S.strokes.push(cur);
+      seg(q[0], q[1], q[0] + 0.7, q[1] + 0.7, cur.p[0][2], cur.e, cur.c);
+      paintSoon();
+      stato('Scrivi... poi premi SALVA NEL FOGLIO.', '#8a97ab');
+    });
+    cv.addEventListener('pointermove', function (ev) {
+      if (!drawing || !cur) { return; }
+      ev.preventDefault();
+      const q = pos(ev);
+      const last = cur.p[cur.p.length - 1];
+      const w = cur.z * pressione(ev);
+      seg(last[0], last[1], q[0], q[1], (last[2] + w) / 2, cur.e, cur.c);
+      cur.p.push([q[0], q[1], w]);
+      paintSoon();
+    });
+    function fine() {
+      if (!drawing) { return; }
+      drawing = false;
+      cur = null;
+      stato('Non ancora salvato: premi SALVA NEL FOGLIO.', '#b45309');
+    }
+    cv.addEventListener('pointerup', fine);
+    cv.addEventListener('pointercancel', fine);
+    cv.addEventListener('pointerleave', fine);
+  }
+
+  function bind(sel, fn) {
+    const el = root.querySelector(sel);
+    if (el) { el.onclick = fn; }
+    return el;
+  }
+
+  root.querySelectorAll('.vcsw').forEach(function (b) {
+    b.classList.toggle('on', b.getAttribute('data-c') === S.color && !S.erase);
+    b.onclick = function () {
+      S.color = b.getAttribute('data-c');
+      S.erase = false;
+      root.querySelectorAll('.vcsw').forEach(function (o) { o.classList.toggle('on', o === b); });
+      const gm = root.querySelector('#vcgomma');
+      if (gm) { gm.classList.remove('on'); }
+    };
+  });
+  root.querySelectorAll('.vcsz').forEach(function (b) {
+    b.classList.toggle('on', parseInt(b.getAttribute('data-s'), 10) === S.size);
+    b.onclick = function () {
+      S.size = parseInt(b.getAttribute('data-s'), 10) || 5;
+      root.querySelectorAll('.vcsz').forEach(function (o) { o.classList.toggle('on', o === b); });
+    };
+  });
+
+  bind('#vcgomma', function () {
+    S.erase = !S.erase;
+    this.classList.toggle('on', S.erase);
+    if (S.erase) {
+      root.querySelectorAll('.vcsw').forEach(function (o) { o.classList.remove('on'); });
+    }
+  });
+
+  bind('#vcannulla', function () {
+    if (S.strokes.length) {
+      S.strokes.pop();
+      replay();
+      stato('Ultimo tratto cancellato.', '#8a97ab');
+    }
+  });
+
+  bind('#vcpulisci', function () {
+    if (!armPulisci) {
+      armPulisci = true;
+      this.textContent = 'Tocca di nuovo per svuotare';
+      this.classList.add('on');
+      return;
+    }
+    armPulisci = false;
+    this.textContent = 'Pulisci';
+    this.classList.remove('on');
+    S.strokes = [];
+    S.base = '';
+    baseImg = null;
+    inX.clearRect(0, 0, W, H);
+    paint();
+    stato('Foglio svuotato: premi SALVA NEL FOGLIO per confermare.', '#b45309');
+  });
+
+  bind('#vcscorri', function () {
+    scorri = !scorri;
+    cv.classList.toggle('scorri', scorri);
+    this.classList.toggle('on', scorri);
+    this.textContent = scorri ? 'Scrivi col Pencil' : 'Scorri la pagina';
+  });
+
+  bind('#vcsalva', function () {
+    try {
+      const out = document.createElement('canvas');
+      out.width = W;
+      out.height = H;
+      const o = out.getContext('2d');
+      o.drawImage(inC, 0, 0);
+      setStateValue('ink', out.toDataURL('image/png'));
+      stato('Salvato: le scritte restano nella seduta.', '#15803d');
+    } catch (e) {
+      stato('Salvataggio non riuscito: riprova.', '#c81e1e');
+    }
+  });
+
+  loadBg(data.bg || '');
+  loadInk(data.ink || '');
+  replay();
+  if (S.strokes.length) {
+    stato('Scritte non ancora salvate: premi SALVA NEL FOGLIO.', '#b45309');
+  }
+}
+'''
+
+
+def _pad_component():
+    """Prepara (una volta sola) il foglio scrivibile col Pencil."""
+    if _PAD_REG["tried"]:
+        return _PAD_REG["comp"]
+    _PAD_REG["tried"] = True
+    try:
+        from streamlit.components import v2 as _c2
+        _PAD_REG["comp"] = _c2.component("volley_foglio_pencil", html=_PAD_HTML,
+                                         css=_PAD_CSS, js=_PAD_JS, isolate_styles=True)
+    except Exception:
+        _PAD_REG["comp"] = None
+    return _PAD_REG["comp"]
+
+
+def _pad_disponibile():
+    return bool(_HAS_PIL and _pad_component() is not None)
+
+
+def _componi_foglio(sfondo_img, ink_b64, larg, alt):
+    """Foglio (immagine) + tratti della penna = una sola pagina PNG."""
+    if not _HAS_PIL:
+        return ""
+    try:
+        if sfondo_img is not None:
+            base = sfondo_img.convert("RGBA")
+        else:
+            base = Image.new("RGBA", (int(larg), int(alt)), (255, 255, 255, 255))
+        if ink_b64:
+            ov = Image.open(io.BytesIO(base64.b64decode(ink_b64))).convert("RGBA")
+            if ov.size != base.size:
+                ov = ov.resize(base.size)
+            base.alpha_composite(ov)
+        buf = io.BytesIO()
+        base.convert("RGB").save(buf, format="PNG", optimize=True)
+        return base64.b64encode(buf.getvalue()).decode("ascii")
+    except Exception:
+        return ""
+
+
+def _pad_disegno(s, pag, key_prefix, idx, sfondo_img, larg, alt):
+    """Mostra il foglio con sopra l'inchiostro e salva le scritte nella seduta."""
+    ap = appunti_seduta(s)
+    comp = _pad_component()
+    if comp is None:
+        _pad_html_fallback(s, key_prefix, altezza=min(560, int(alt)))
+        return
+    _bg = ""
+    if sfondo_img is not None:
+        try:
+            _buf = io.BytesIO()
+            sfondo_img.convert("RGB").save(_buf, format="PNG", optimize=True)
+            _bg = "data:image/png;base64," + base64.b64encode(_buf.getvalue()).decode("ascii")
+        except Exception:
+            _bg = ""
+    _ink = str(pag.get("ink", "") or "")
+    if _ink and not _ink.startswith("data:"):
+        _ink = "data:image/png;base64," + _ink
+    _pid = str(_id_seduta(s)) + "_" + str(pag.get("pid", "") or "p") + "_" + str(idx)
+    try:
+        res = comp(key=key_prefix + "_pad",
+                   data={"pad": _pid, "w": int(larg), "h": int(alt),
+                         "bg": _bg, "ink": _ink},
+                   default={"ink": _ink}, height="content",
+                   on_ink_change=lambda: None)
+    except Exception:
+        st.warning("Il foglio grande non si e' aperto: uso il foglio semplice qui sotto.")
+        _pad_html_fallback(s, key_prefix, altezza=min(560, int(alt)))
+        return
+
+    _nuovo = ""
+    try:
+        _nuovo = str(getattr(res, "ink", "") or "")
+    except Exception:
+        _nuovo = ""
+    if _nuovo.startswith("data:") and "," in _nuovo:
+        _nuovo = _nuovo.split(",", 1)[1]
+        if _nuovo != str(pag.get("ink", "") or ""):
+            pag["ink"] = _nuovo
+            pag["png"] = _componi_foglio(sfondo_img, _nuovo, larg, alt)
+            pag["json"] = []
+            pag["aggiornato"] = datetime.now().strftime("%d/%m/%Y %H:%M")
+            _segna_appunti(ap)
+            save_state()
+            st.toast("Foglio salvato: le scritte restano dentro la seduta.")
+
+
 def anteprima_appunti(s, max_pagine=6):
     """Mostra le pagine di appunti gia' salvate nella seduta."""
     ap = appunti_seduta(s)
@@ -1379,37 +1782,50 @@ def anteprima_appunti(s, max_pagine=6):
         st.caption("Altre " + str(len(_pags) - max_pagine) + " pagine salvate.")
 
 
-def editor_appunti(s, key_prefix, altezza=520, larghezza=880):
+def editor_appunti(s, key_prefix, altezza=520, larghezza=880, auto_foglio=False):
     """Blocco appunti a mano libera della seduta: si scrive con la Pencil (o col
-    dito) e i tratti si salvano da soli dentro la seduta (finiscono anche in
-    stampa e nel PDF)."""
+    dito) direttamente sul foglio degli allenamenti. Le scritte restano salvate
+    dentro la seduta (e finiscono anche in stampa e nel PDF)."""
     ap = appunti_seduta(s)
     pagine = ap["pagine"]
+    _nativo = _pad_disponibile()
+    _canvasok = bool(_HAS_CANVAS and _HAS_PIL)
 
-    if not (_HAS_CANVAS and _HAS_PIL):
-        st.warning("Per scrivere direttamente nella seduta manca un modulo (una volta sola):\n\n"
-                   "`pip install streamlit-drawable-canvas pillow`\n\n"
-                   "Intanto puoi usare il foglio qui sotto: funziona subito e salva sul dispositivo.")
+    if not (_nativo or _canvasok):
+        st.warning("Per scrivere sul foglio serve una libreria (una volta sola):\n\n"
+                   "`pip install pillow`\n\n"
+                   "Intanto puoi usare il foglio semplice qui sotto: funziona subito e salva sul dispositivo.")
         _pad_html_fallback(s, key_prefix, altezza=max(360, altezza - 80))
         _importa_pagina_png(s, key_prefix)
         _editor_testo(s, key_prefix)
         return
 
-    # ---- crea la pagina su cui scrivere ----
     _kidx = f"{key_prefix}_idx"
+
+    # ---- il foglio degli allenamenti viene preparato da solo ----
+    if auto_foglio and not pagine:
+        pagine.append({"tipo": "foglio", "sfondo": foglio_seduta_b64(s, larghezza=int(larghezza)),
+                       "png": "", "json": [], "ink": "", "aggiornato": "",
+                       "pid": datetime.now().strftime("%Y%m%d%H%M%S%f")})
+        _segna_appunti(ap)
+        save_state()
+        st.session_state[_kidx] = len(pagine) - 1
+
     bc1, bc2 = st.columns(2)
     if bc1.button("\u270D\uFE0F Foglio degli allenamenti", key=f"{key_prefix}_newfoglio",
                   use_container_width=True,
                   help="Pagina con gli esercizi della seduta: scrivi sopra o di fianco a ogni esercizio."):
         pagine.append({"tipo": "foglio", "sfondo": foglio_seduta_b64(s, larghezza=int(larghezza)),
-                       "png": "", "json": [], "aggiornato": ""})
+                       "png": "", "json": [], "ink": "", "aggiornato": "",
+                       "pid": datetime.now().strftime("%Y%m%d%H%M%S%f")})
         _segna_appunti(ap)
         save_state()
         st.session_state[_kidx] = len(pagine) - 1
         st.rerun()
-    if bc2.button("\U0001F4C4 Pagina bianca", key=f"{key_prefix}_newbianca",
+    if bc2.button("\U0001F4C4 Pagina bianca a righe", key=f"{key_prefix}_newbianca",
                   use_container_width=True, help="Un foglio a righe libero per appunti generici."):
-        pagine.append({"tipo": "bianco", "png": "", "json": [], "aggiornato": ""})
+        pagine.append({"tipo": "bianco", "png": "", "json": [], "ink": "", "aggiornato": "",
+                       "pid": datetime.now().strftime("%Y%m%d%H%M%S%f")})
         _segna_appunti(ap)
         save_state()
         st.session_state[_kidx] = len(pagine) - 1
@@ -1417,9 +1833,16 @@ def editor_appunti(s, key_prefix, altezza=520, larghezza=880):
 
     if not pagine:
         st.info("Scegli come scrivere: **Foglio degli allenamenti** per annotare **sopra o di fianco agli esercizi**, "
-                "oppure **Pagina bianca** per appunti liberi.")
+                "oppure **Pagina bianca a righe** per appunti liberi.")
         _editor_testo(s, key_prefix)
         return
+
+    # ---- pagine salvate con versioni vecchie ----
+    for _i in range(len(pagine)):
+        if not isinstance(pagine[_i], dict):
+            pagine[_i] = {"png": _png_pagina(pagine[_i]), "json": [], "ink": "", "aggiornato": ""}
+        elif "ink" not in pagine[_i]:
+            pagine[_i]["ink"] = ""
 
     # ---- cambio pagina ----
     idx = int(st.session_state.get(_kidx, 0) or 0)
@@ -1428,9 +1851,9 @@ def editor_appunti(s, key_prefix, altezza=520, larghezza=880):
         st.session_state[_kidx] = 0
 
     pag = pagine[idx]
-    if not isinstance(pag, dict):
-        pag = {"png": _png_pagina(pag), "json": [], "aggiornato": ""}
-        pagine[idx] = pag
+    if not pag.get("pid"):
+        pag["pid"] = datetime.now().strftime("%Y%m%d%H%M%S%f")
+        save_state()
     _tipo = str(pag.get("tipo", "") or "")
 
     if len(pagine) > 1:
@@ -1449,69 +1872,82 @@ def editor_appunti(s, key_prefix, altezza=520, larghezza=880):
             st.session_state[_kidx] = (idx + 1) % len(pagine)
             st.rerun()
 
-    colore, spessore, modo = _scelte_penna(key_prefix)
-    if _tipo == "foglio":
-        st.caption("\u270F\uFE0F Scrivi **sopra** o **di fianco** agli esercizi (la colonna note e' a destra): "
-                   "ogni tratto si salva in automatico nella seduta.")
-    elif _tipo == "bianco":
-        st.caption("\u270F\uFE0F Foglio bianco a righe: ogni tratto viene salvato in automatico nella seduta.")
-    else:
-        st.caption("\u270F\uFE0F Scrivi sul foglio: ogni tratto viene salvato in automatico nella seduta.")
-
+    # ---- sfondo su cui si scrive ----
     _sfondo = None
     _larg, _alt = int(larghezza), int(altezza)
     if _tipo == "foglio":
         _sfondo = _immagine_b64(pag.get("sfondo"))
         if _sfondo is not None:
             _larg, _alt = _sfondo.size
-    if _sfondo is None:
-        _sfondo = _paper_background(_larg, _alt)
 
-    _kw = dict(fill_color="rgba(255,255,255,0)", stroke_width=int(spessore),
-               stroke_color=colore, background_image=_sfondo,
-               height=int(_alt), width=int(_larg), drawing_mode=modo,
-               return_image_data=True, key=f"{key_prefix}_cv_{idx}")
-    if _json_pagina(pag):
-        _kw["initial_drawing"] = {"version": "4.4.0", "objects": _json_pagina(pag)}
-    res = None
-    try:
-        res = st_canvas(**_kw)
-    except TypeError:
-        _kw.pop("initial_drawing", None)
-        _kw.pop("return_image_data", None)
-        res = st_canvas(**_kw)
+    if _nativo:
+        if _sfondo is None and _tipo != "foglio":
+            _sfondo = _paper_background(_larg, _alt)
+        if _tipo == "foglio" and _sfondo is None:
+            st.warning("Il foglio degli esercizi non riesce a disegnarsi (manca la libreria Pillow): "
+                       "`pip install pillow`. Per ora scrivi su una **Pagina bianca a righe**.")
+        st.caption("\u270F\uFE0F Scrivi direttamente sul foglio con la Pencil. Quando hai finito premi "
+                   "**SALVA NEL FOGLIO**: le scritte restano nella seduta e si vedono anche in stampa.")
+        _pad_disegno(s, pag, key_prefix, idx, _sfondo, _larg, _alt)
+    else:
+        colore, spessore, modo = _scelte_penna(key_prefix)
+        if _tipo == "foglio":
+            st.caption("\u270F\uFE0F Scrivi **sopra** o **di fianco** agli esercizi (la colonna note e' a destra): "
+                       "ogni tratto si salva in automatico nella seduta.")
+        elif _tipo == "bianco":
+            st.caption("\u270F\uFE0F Foglio bianco a righe: ogni tratto viene salvato in automatico nella seduta.")
+        else:
+            st.caption("\u270F\uFE0F Scrivi sul foglio: ogni tratto viene salvato in automatico nella seduta.")
 
-    if res is not None:
+        if _sfondo is None:
+            _sfondo = _paper_background(_larg, _alt)
+
+        _kw = dict(fill_color="rgba(255,255,255,0)", stroke_width=int(spessore),
+                   stroke_color=colore, background_image=_sfondo,
+                   height=int(_alt), width=int(_larg), drawing_mode=modo,
+                   return_image_data=True, key=f"{key_prefix}_cv_{idx}")
+        if _json_pagina(pag):
+            _kw["initial_drawing"] = {"version": "4.4.0", "objects": _json_pagina(pag)}
+        res = None
         try:
-            _objs = list((res.json_data or {}).get("objects") or [])
-        except Exception:
-            _objs = []
-        _sig = json.dumps(_objs, sort_keys=True, default=str)
-        _sigk = f"{key_prefix}_sig_{idx}"
-        if st.session_state.get(_sigk) != _sig:
-            st.session_state[_sigk] = _sig
-            if _objs:
-                try:
-                    _b64 = _nota_png_b64(res.image_data)
-                except Exception:
-                    _b64 = ""
-                pag["json"] = _objs
-                pag["png"] = _b64
-                pag["aggiornato"] = datetime.now().strftime("%d/%m/%Y %H:%M")
-                _segna_appunti(ap)
-                save_state()
-            elif _json_pagina(pag):
-                # tutte le scritte sono state cancellate con la gomma
-                pag["json"] = []
-                pag["png"] = ""
-                pag["aggiornato"] = datetime.now().strftime("%d/%m/%Y %H:%M")
-                _segna_appunti(ap)
-                save_state()
+            res = st_canvas(**_kw)
+        except TypeError:
+            _kw.pop("initial_drawing", None)
+            _kw.pop("return_image_data", None)
+            res = st_canvas(**_kw)
+
+        if res is not None:
+            try:
+                _objs = list((res.json_data or {}).get("objects") or [])
+            except Exception:
+                _objs = []
+            _sig = json.dumps(_objs, sort_keys=True, default=str)
+            _sigk = f"{key_prefix}_sig_{idx}"
+            if st.session_state.get(_sigk) != _sig:
+                st.session_state[_sigk] = _sig
+                if _objs:
+                    try:
+                        _b64 = _nota_png_b64(res.image_data)
+                    except Exception:
+                        _b64 = ""
+                    pag["json"] = _objs
+                    pag["png"] = _b64
+                    pag["aggiornato"] = datetime.now().strftime("%d/%m/%Y %H:%M")
+                    _segna_appunti(ap)
+                    save_state()
+                elif _json_pagina(pag):
+                    # tutte le scritte sono state cancellate con la gomma
+                    pag["json"] = []
+                    pag["png"] = ""
+                    pag["aggiornato"] = datetime.now().strftime("%d/%m/%Y %H:%M")
+                    _segna_appunti(ap)
+                    save_state()
 
     _png = _png_pagina(pag)
     if _png:
         try:
-            st.download_button("\u2B07\uFE0F Scarica questa pagina (PNG)", data=base64.b64decode(_png),
+            st.download_button("\u2B07\uFE0F Scarica questa pagina con le tue scritte (PNG)",
+                               data=base64.b64decode(_png),
                                file_name="appunti_" + str(s.get("data", "")) + "_pag" + str(idx + 1) + ".png",
                                mime="image/png", key=f"{key_prefix}_dl_{idx}",
                                use_container_width=True)
@@ -3131,6 +3567,34 @@ if menu == "\U0001F4CB Programma Allenamenti":
         if ult.get("assenti_nomi"):
             st.caption("\u274C Assenti: " + ", ".join(ult["assenti_nomi"]))
 
+        # ---- Foglio degli allenamenti con la Pencil ----
+        _fgl_key = "prog_foglio_aperto"
+        _aperto = bool(st.session_state.get(_fgl_key))
+        cf1, cf2 = st.columns([2, 1])
+        if cf1.button("\U0001F441\uFE0F Nascondi il foglio" if _aperto else
+                      "\u270D\uFE0F Foglio degli allenamenti \u2014 scrivi col Pencil",
+                      key="prog_foglio_btn", use_container_width=True, type="primary"):
+            st.session_state[_fgl_key] = not _aperto
+            st.rerun()
+        _annot = ""
+        try:
+            for _p in ((ult.get("appunti") or {}).get("pagine") or []):
+                if isinstance(_p, dict) and _p.get("png"):
+                    _annot = _p["png"]
+        except Exception:
+            _annot = ""
+        try:
+            _img_dl = base64.b64decode(_annot) if _annot else base64.b64decode(foglio_seduta_b64(ult))
+            cf2.download_button("\U0001F4E5 Scarica il foglio (PNG)", data=_img_dl,
+                                file_name="foglio_allenamento_" + str(ult.get("data", "")) + ".png",
+                                mime="image/png", key="prog_foglio_dl", use_container_width=True,
+                                help="Se hai gia' scritto col Pencil, il PNG contiene anche le tue scritte.")
+        except Exception:
+            pass
+        if st.session_state.get(_fgl_key):
+            editor_appunti(ult, "prog_pencil", altezza=560, auto_foglio=True)
+            st.markdown("---")
+
         st.info("\U0001F4A1 Puoi correggere la seduta: modifica, sostituisci, sposta o elimina ogni singolo esercizio qui sotto.")
         es_list = ult["esercizi"]
         tutti_nomi = list(st.session_state.esercizi["Nome"])
@@ -4011,7 +4475,7 @@ if menu == "\u270D\uFE0F Appunti Pencil":
             + " \u00b7 " + _html.escape(str(_s_sc.get("intensita", ""))) + _info_extra + "</div>",
             unsafe_allow_html=True,
         )
-        editor_appunti(_s_sc, "pencil_page", altezza=560)
+        editor_appunti(_s_sc, "pencil_page", altezza=560, auto_foglio=True)
         if _n_pag or _testo_app:
             with st.expander("\U0001F4C4 Rivedi le pagine di appunti di questa seduta"):
                 anteprima_appunti(_s_sc)
