@@ -27,6 +27,12 @@ try:
 except Exception:
     _HAS_CANVAS = False
 
+try:
+    from streamlit.components.v1 import html as _html_comp
+    _HAS_COMP = True
+except Exception:
+    _HAS_COMP = False
+
 # ============================================================
 # CONFIGURAZIONE
 # ============================================================
@@ -319,6 +325,18 @@ st.markdown("""
         transform: skewX(-18deg); pointer-events:none; opacity:0;
     }
     .stButton>button:hover::after { opacity:1; animation: vc-shimmer .8s ease-out; }
+
+    /* ===== Blocco appunti a mano libera (Pencil) ===== */
+    .nota-pag {
+        max-width:100%; width:100%; border-radius:12px; border:1px solid var(--vc-border);
+        background:#fff; margin:8px 0; display:block;
+        box-shadow: 0 3px 10px rgba(0,0,0,0.25);
+    }
+    .nota-badge {
+        display:inline-block; padding:.15rem .55rem; border-radius:999px;
+        background:rgba(255,159,28,0.18); color:var(--vc-accent2);
+        font-size:.75rem; font-weight:800; margin-left:.4rem;
+    }
 
 </style>
 """, unsafe_allow_html=True)
@@ -898,6 +916,384 @@ def file_to_base64_png(uploaded):
         return ""
 
 
+# ============================================================
+# APPUNTI A MANO LIBERA (Pencil / dito) — blocco appunti della seduta
+# ============================================================
+PEN_COLORI = [("\u26AB", "#111111"), ("\U0001F535", "#1a3a7a"), ("\U0001F534", "#e63946"),
+              ("\U0001F7E2", "#12864b"), ("\U0001F7E3", "#7b3fe4")]
+_PEN_ICO = {c: _i for _i, c in PEN_COLORI}
+PEN_SPESSORI = ["Fine", "Media", "Grossa"]
+_PEN_SP = {"Fine": 2, "Media": 4, "Grossa": 7}
+PEN_STRUMENTI = [("\u270F\uFE0F Penna", "freedraw"), ("\U0001F58D\uFE0F Evidenz.", "evidenzia"),
+                 ("\U0001F9FD Gomma", "gomma"), ("\U0001F4CF Rettangolo", "rect"),
+                 ("\u2B55 Cerchio", "circle"), ("\u27A1\uFE0F Freccia", "line"),
+                 ("\U0001F590\uFE0F Sposta", "transform")]
+_PAPER_CACHE = {}
+
+
+def _paper_background(w=880, h=520):
+    """Foglio a righe (immagine PIL) usato come sfondo del blocco appunti."""
+    if not _HAS_PIL:
+        return None
+    _k = (int(w), int(h))
+    if _k in _PAPER_CACHE:
+        return _PAPER_CACHE[_k]
+    img = Image.new("RGB", _k, (255, 255, 255))
+    d = ImageDraw.Draw(img)
+    for _y in range(46, _k[1], 38):
+        d.line([(0, _y), (_k[0], _y)], fill=(223, 231, 242), width=1)
+    d.line([(56, 0), (56, _k[1])], fill=(240, 176, 176), width=2)
+    for _y in range(36, _k[1], 76):
+        d.ellipse([12, _y - 6, 24, _y + 6], fill=(232, 236, 243))
+    _PAPER_CACHE[_k] = img
+    return img
+
+
+def _nota_png_b64(image_data):
+    """PNG base64 del foglio (sfondo bianco) con sopra i tratti della penna."""
+    if image_data is None or not _HAS_PIL:
+        return ""
+    try:
+        arr = image_data.astype("uint8")
+        if arr.shape[-1] == 4 and int(arr[:, :, 3].sum()) == 0:
+            return ""
+        img = Image.fromarray(arr, "RGBA")
+        base = Image.new("RGBA", img.size, (255, 255, 255, 255))
+        base.alpha_composite(img)
+        buf = io.BytesIO()
+        base.convert("RGB").save(buf, format="PNG", optimize=True)
+        return base64.b64encode(buf.getvalue()).decode("ascii")
+    except Exception:
+        return ""
+
+
+def appunti_seduta(s):
+    """Blocco appunti della seduta (creato al volo anche per le sedute salvate
+    prima di questa versione):
+    {'testo': str, 'pagine': [{'png': b64, 'json': [...], 'aggiornato': str}], 'aggiornato': str}"""
+    if not isinstance(s.get("appunti"), dict):
+        s["appunti"] = {}
+    ap = s["appunti"]
+    if not isinstance(ap.get("pagine"), list):
+        ap["pagine"] = []
+    if not isinstance(ap.get("testo"), str):
+        ap["testo"] = ""
+    if not ap["testo"] and s.get("note"):
+        ap["testo"] = str(s.get("note") or "")
+    if not isinstance(ap.get("aggiornato"), str):
+        ap["aggiornato"] = ""
+    return ap
+
+
+def _png_pagina(p):
+    if isinstance(p, dict):
+        return str(p.get("png", "") or "")
+    return str(p or "")
+
+
+def _json_pagina(p):
+    if isinstance(p, dict) and isinstance(p.get("json"), list):
+        return p["json"]
+    return []
+
+
+def _segna_appunti(ap):
+    ap["aggiornato"] = datetime.now().strftime("%d/%m/%Y %H:%M")
+
+
+def appunti_info(s):
+    """(numero pagine disegnate, testo scritto, ultimo aggiornamento)."""
+    ap = appunti_seduta(s)
+    n = len([1 for p in ap.get("pagine") or [] if _png_pagina(p)])
+    return n, ap.get("testo", ""), ap.get("aggiornato", "")
+
+
+def _scelte_penna(key_prefix):
+    """Barra rapida (tasti grandi, comodi sul tablet): colore, tratto, strumento."""
+    c1, c2 = st.columns([3, 2])
+    colore = c1.radio("Colore", [c for _i, c in PEN_COLORI], horizontal=True,
+                      format_func=lambda v: _PEN_ICO.get(v, "\u26AB"),
+                      key=f"{key_prefix}_col")
+    spesso_nome = c2.radio("Tratto", PEN_SPESSORI, horizontal=True, index=1,
+                           key=f"{key_prefix}_sp")
+    spessore = _PEN_SP.get(spesso_nome, 4)
+    strumento = st.radio("Strumento", [n for n, _m in PEN_STRUMENTI], horizontal=True,
+                         key=f"{key_prefix}_tool")
+    modo = dict(PEN_STRUMENTI).get(strumento, "freedraw")
+    colore_tratto = colore
+    if modo == "evidenzia":
+        colore_tratto, spessore, modo = "#fff176", 18, "freedraw"
+    elif modo == "gomma":
+        colore_tratto, spessore, modo = "#ffffff", max(16, spessore * 3), "freedraw"
+    return colore_tratto, int(spessore), modo
+
+
+def _editor_testo(s, key_prefix):
+    """Note scritte (tastiera) accanto agli appunti a mano."""
+    ap = appunti_seduta(s)
+    _testo = st.text_area("\U0001F4DD Note scritte (facoltative)", value=ap.get("testo", ""),
+                          key=f"{key_prefix}_testo", height=90,
+                          placeholder="Es. come \u00E8 andata la seduta, cosa migliorare, "
+                                      "indicazioni per la prossima volta...")
+    c1, c2 = st.columns([1, 2])
+    if c1.button("\U0001F4BE Salva note", key=f"{key_prefix}_savetxt", use_container_width=True):
+        ap["testo"] = (_testo or "").strip()
+        s["note"] = ap["testo"]
+        _segna_appunti(ap)
+        save_state()
+        st.toast("Note salvate.")
+    if ap.get("aggiornato"):
+        c2.caption("Ultimo aggiornamento: " + str(ap["aggiornato"]))
+
+
+def _importa_pagina_png(s, key_prefix):
+    """Tiene dentro la seduta una pagina di appunti disegnata a parte
+    (es. PNG scaricato dal foglio che funziona senza installazioni)."""
+    ap = appunti_seduta(s)
+    up = st.file_uploader("Hai salvato una pagina? Caricala qui per tenerla dentro la seduta",
+                          type=["png", "jpg", "jpeg"], key=f"{key_prefix}_imp")
+    if up is not None:
+        _b64 = file_to_base64_png(up)
+        _esistenti = [_png_pagina(p) for p in ap["pagine"]]
+        if _b64 and _b64 not in _esistenti:
+            ap["pagine"].append({"png": _b64, "json": [],
+                                 "aggiornato": datetime.now().strftime("%d/%m/%Y %H:%M")})
+            _segna_appunti(ap)
+            save_state()
+            st.success("Pagina aggiunta al blocco appunti della seduta.")
+
+
+def _pad_html_fallback(s, key_prefix, altezza=420):
+    """Blocco appunti autonomo (HTML + JavaScript) che funziona anche senza il
+    modulo del canvas: si scrive con la Pencil o col dito, i tratti restano
+    salvati su questo dispositivo e si possono scaricare in PNG."""
+    if not _HAS_COMP:
+        st.info("Aggiorna Streamlit per usare il blocco appunti.")
+        return
+    _sid = _id_seduta(s).replace("'", "")
+    _css = (
+        "<style>"
+        "#padwrap{font-family:Segoe UI,Arial,sans-serif;background:#fff;border:1px solid #d7dce6;"
+        "border-radius:12px;padding:8px}"
+        "#padbar{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;align-items:center}"
+        "#padbar button{border:1px solid #cfd6e2;background:#f4f6fa;border-radius:9px;"
+        "padding:7px 11px;font-weight:700;font-size:14px;color:#1a2233;cursor:pointer}"
+        "#padbar button.on{outline:3px solid #ff9f1c;outline-offset:1px}"
+        "#padbar .sw{width:32px;height:32px;border-radius:50%;padding:0}"
+        "#padcv{width:100%;height:auto;touch-action:none;display:block;border:1px solid #d7dce6;"
+        "border-radius:10px;background:#fff;cursor:crosshair}"
+        "#padhint{color:#7a869a;font-size:12px;margin-top:5px}"
+        "</style>"
+    )
+    _sw = "".join("<button class='sw' data-c='" + c + "' style='background:" + c + "'></button>"
+                   for _i, c in PEN_COLORI)
+    _js = (
+        "<script>"
+        "(function(){"
+        "var cv=document.getElementById('padcv'), ctx=cv.getContext('2d');"
+        "var KEY='volleycoach_pad_" + _sid + "';"
+        "var color='#111111', size=4, erase=false, onlyPen=false, drawing=false, cur=null;"
+        "var strokes=[];"
+        "function ruler(){ctx.strokeStyle='#e2e9f3';ctx.lineWidth=1;"
+        "for(var y=44;y<cv.height;y+=36){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(cv.width,y);ctx.stroke();}}"
+        "function seg(x0,y0,x1,y1,w,c){ctx.strokeStyle=c;ctx.lineWidth=w;ctx.lineCap='round';"
+        "ctx.lineJoin='round';ctx.beginPath();ctx.moveTo(x0,y0);ctx.lineTo(x1,y1);ctx.stroke();}"
+        "function redraw(){ctx.fillStyle='#ffffff';ctx.fillRect(0,0,cv.width,cv.height);ruler();"
+        "for(var i=0;i<strokes.length;i++){var s=strokes[i];for(var j=1;j<s.pts.length;j++){"
+        "seg(s.pts[j-1][0],s.pts[j-1][1],s.pts[j][0],s.pts[j][1],s.pts[j][2],"
+        "s.erase?'#ffffff':s.color);}}}"
+        "function save(){try{localStorage.setItem(KEY,cv.toDataURL('image/png'));"
+        "document.getElementById('padhint').textContent='Salvato su questo dispositivo.';}catch(e){}}"
+        "function pos(e){var r=cv.getBoundingClientRect();"
+        "return {x:(e.clientX-r.left)*cv.width/r.width, y:(e.clientY-r.top)*cv.height/r.height};}"
+        "cv.addEventListener('pointerdown',function(e){if(onlyPen&&e.pointerType!=='pen'){return;}"
+        "e.preventDefault();try{cv.setPointerCapture(e.pointerId);}catch(err){}"
+        "drawing=true;var q=pos(e);var pr=(e.pressure&&e.pressure>0)?e.pressure:0.5;"
+        "cur={color:color,size:size,erase:erase,pts:[[q.x,q.y,size*(0.6+0.8*pr)]]};strokes.push(cur);});"
+        "cv.addEventListener('pointermove',function(e){if(!drawing||!cur){return;}e.preventDefault();"
+        "var q=pos(e);var pr=(e.pressure&&e.pressure>0)?e.pressure:0.5;var w=cur.size*(0.6+0.8*pr);"
+        "var last=cur.pts[cur.pts.length-1];"
+        "seg(last[0],last[1],q.x,q.y,w,cur.erase?'#ffffff':cur.color);cur.pts.push([q.x,q.y,w]);});"
+        "window.addEventListener('pointerup',function(){if(drawing){drawing=false;cur=null;save();}});"
+        "var sws=document.querySelectorAll('#padbar .sw');"
+        "for(var i=0;i<sws.length;i++){(function(b){b.addEventListener('click',function(){"
+        "color=b.getAttribute('data-c');erase=false;"
+        "for(var k=0;k<sws.length;k++){sws[k].classList.remove('on');}b.classList.add('on');});})(sws[i]);}"
+        "var szs=document.querySelectorAll('#padbar .sz');"
+        "for(var j=0;j<szs.length;j++){(function(b){b.addEventListener('click',function(){"
+        "size=parseInt(b.getAttribute('data-s'),10);"
+        "for(var k=0;k<szs.length;k++){szs[k].classList.remove('on');}b.classList.add('on');});})(szs[j]);}"
+        "document.getElementById('pader').addEventListener('click',function(){"
+        "erase=!erase;this.classList.toggle('on');});"
+        "document.getElementById('padun').addEventListener('click',function(){"
+        "strokes.pop();redraw();save();});"
+        "document.getElementById('padcl').addEventListener('click',function(){"
+        "if(confirm('Cancellare tutto il foglio?')){strokes=[];redraw();save();}});"
+        "document.getElementById('paddl').addEventListener('click',function(){"
+        "var a=document.createElement('a');a.download='appunti.png';"
+        "a.href=cv.toDataURL('image/png');a.click();});"
+        "document.getElementById('padpen').addEventListener('change',function(){onlyPen=this.checked;});"
+        "redraw();var old=null;try{old=localStorage.getItem(KEY);}catch(e){}"
+        "if(old){var im=new Image();im.onload=function(){ctx.drawImage(im,0,0,cv.width,cv.height);};im.src=old;}"
+        "})();"
+        "</script>"
+    )
+    _h = int(max(320, altezza) * 900 / 880)
+    _doc = (
+        "<div id='padwrap'>"
+        "<div id='padbar'>" + _sw +
+        "<button class='sz on' data-s='4'>Media</button>"
+        "<button class='sz' data-s='2'>Fine</button>"
+        "<button class='sz' data-s='9'>Grossa</button>"
+        "<button id='pader'>Gomma</button>"
+        "<button id='padun'>Annulla</button>"
+        "<button id='padcl'>Pulisci</button>"
+        "<button id='paddl'>Scarica PNG</button>"
+        "<label style='font-size:13px;color:#3b4658'><input type='checkbox' id='padpen'> solo Pencil</label>"
+        "</div>"
+        "<canvas id='padcv' width='900' height='" + str(_h) + "'></canvas>"
+        "<div id='padhint'>Scrivi qui con la Pencil (o col dito). Salvataggio automatico su questo dispositivo.</div>"
+        "</div>" + _css + _js
+    )
+    _html_comp(_doc, height=int(altezza) + 90, scrolling=False)
+
+
+def anteprima_appunti(s, max_pagine=6):
+    """Mostra le pagine di appunti gia' salvate nella seduta."""
+    ap = appunti_seduta(s)
+    _pags = [p for p in ap.get("pagine") or [] if _png_pagina(p)]
+    if not _pags:
+        st.caption("Nessun appunto disegnato per questa seduta.")
+        return
+    for _i, _p in enumerate(_pags[:max_pagine]):
+        st.markdown("<div style='color:var(--vc-muted);font-size:.8rem;margin-top:6px'>Pagina "
+                    + str(_i + 1) + "</div><img class='nota-pag' src='data:image/png;base64,"
+                    + _png_pagina(_p) + "'/>", unsafe_allow_html=True)
+    if len(_pags) > max_pagine:
+        st.caption("Altre " + str(len(_pags) - max_pagine) + " pagine salvate.")
+
+
+def editor_appunti(s, key_prefix, altezza=520, larghezza=880):
+    """Blocco appunti a mano libera della seduta: si scrive con la Pencil (o col
+    dito) e i tratti si salvano da soli dentro la seduta (finiscono anche in
+    stampa e nel PDF)."""
+    ap = appunti_seduta(s)
+    pagine = ap["pagine"]
+    if not pagine:
+        pagine.append({"png": "", "json": [], "aggiornato": ""})
+
+    if not (_HAS_CANVAS and _HAS_PIL):
+        st.warning("Per scrivere direttamente nella seduta manca un modulo (una volta sola):\n\n"
+                   "`pip install streamlit-drawable-canvas pillow`\n\n"
+                   "Intanto puoi usare il foglio qui sotto: funziona subito e salva sul dispositivo.")
+        _pad_html_fallback(s, key_prefix, altezza=max(360, altezza - 80))
+        _importa_pagina_png(s, key_prefix)
+        _editor_testo(s, key_prefix)
+        return
+
+    # ---- cambio pagina ----
+    _kidx = f"{key_prefix}_idx"
+    idx = int(st.session_state.get(_kidx, 0) or 0)
+    if idx < 0 or idx >= len(pagine):
+        idx = 0
+        st.session_state[_kidx] = 0
+    if len(pagine) > 1:
+        nav1, nav2, nav3 = st.columns([1, 3, 1])
+        if nav1.button("\u25C0", key=f"{key_prefix}_prev", use_container_width=True):
+            st.session_state[_kidx] = (idx - 1) % len(pagine)
+            st.rerun()
+        nav2.markdown("<div style='text-align:center;font-weight:800;color:var(--vc-accent2)'>"
+                      "Pagina " + str(idx + 1) + " di " + str(len(pagine)) + "</div>",
+                      unsafe_allow_html=True)
+        if nav3.button("\u25B6", key=f"{key_prefix}_next", use_container_width=True):
+            st.session_state[_kidx] = (idx + 1) % len(pagine)
+            st.rerun()
+
+    pag = pagine[idx]
+    if not isinstance(pag, dict):
+        pag = {"png": _png_pagina(pag), "json": [], "aggiornato": ""}
+        pagine[idx] = pag
+
+    colore, spessore, modo = _scelte_penna(key_prefix)
+    st.caption("\u270F\uFE0F Scrivi sul foglio: ogni tratto viene salvato in automatico nella seduta.")
+
+    _kw = dict(fill_color="rgba(255,255,255,0)", stroke_width=int(spessore),
+               stroke_color=colore, background_image=_paper_background(larghezza, altezza),
+               height=int(altezza), width=int(larghezza), drawing_mode=modo,
+               return_image_data=True, key=f"{key_prefix}_cv_{idx}")
+    if _json_pagina(pag):
+        _kw["initial_drawing"] = {"version": "4.4.0", "objects": _json_pagina(pag)}
+    res = None
+    try:
+        res = st_canvas(**_kw)
+    except TypeError:
+        _kw.pop("initial_drawing", None)
+        _kw.pop("return_image_data", None)
+        res = st_canvas(**_kw)
+
+    if res is not None:
+        try:
+            _objs = list((res.json_data or {}).get("objects") or [])
+        except Exception:
+            _objs = []
+        _sig = json.dumps(_objs, sort_keys=True, default=str)
+        _sigk = f"{key_prefix}_sig_{idx}"
+        if st.session_state.get(_sigk) != _sig:
+            st.session_state[_sigk] = _sig
+            try:
+                _b64 = _nota_png_b64(res.image_data)
+            except Exception:
+                _b64 = ""
+            if _b64 or _png_pagina(pag):
+                pag["json"] = _objs
+                pag["png"] = _b64
+                pag["aggiornato"] = datetime.now().strftime("%d/%m/%Y %H:%M")
+                _segna_appunti(ap)
+                save_state()
+
+    _png = _png_pagina(pag)
+    az1, az2 = st.columns(2)
+    if az1.button("\u2795 Aggiungi pagina", key=f"{key_prefix}_addp", use_container_width=True):
+        pagine.append({"png": "", "json": [], "aggiornato": ""})
+        _segna_appunti(ap)
+        save_state()
+        st.session_state[_kidx] = len(pagine) - 1
+        st.rerun()
+    if _png:
+        try:
+            az2.download_button("\u2B07\uFE0F Scarica pagina (PNG)", data=base64.b64decode(_png),
+                                file_name="appunti_" + str(s.get("data", "")) + "_pag" + str(idx + 1) + ".png",
+                                mime="image/png", key=f"{key_prefix}_dl_{idx}",
+                                use_container_width=True)
+        except Exception:
+            pass
+
+    if len(pagine) > 1:
+        _delk = f"{key_prefix}_delconf"
+        if st.session_state.get(_delk) == idx:
+            d1, d2 = st.columns(2)
+            if d1.button("\u2705 S\u00EC, elimina la pagina " + str(idx + 1),
+                         key=f"{key_prefix}_delyes", type="primary", use_container_width=True):
+                pagine.pop(idx)
+                st.session_state[_delk] = -1
+                st.session_state[_kidx] = 0
+                _segna_appunti(ap)
+                save_state()
+                st.toast("Pagina eliminata.")
+                st.rerun()
+            if d2.button("\u274C Annulla", key=f"{key_prefix}_delno", use_container_width=True):
+                st.session_state[_delk] = -1
+                st.rerun()
+        else:
+            if st.button("\U0001F5D1\uFE0F Elimina questa pagina", key=f"{key_prefix}_delbtn",
+                         use_container_width=True):
+                st.session_state[_delk] = idx
+                st.rerun()
+
+    _importa_pagina_png(s, key_prefix)
+    _editor_testo(s, key_prefix)
+
+
 def stat_presenze_atleta():
     """Ritorna una lista di dict con nome, presenze, totali e percentuale per ogni atleta."""
     sedute = [s for s in st.session_state.sedute if s.get("presenti_nomi") is not None]
@@ -1077,7 +1473,9 @@ def seduta_pdf_bytes(s, ora_inizio="18:00"):
     pdf.set_font("Helvetica", "", 11)
     pdf.cell(0, 6, _ascii("Scheda allenamento - " + str(s["data"]) + "   (inizio " + str(ora_inizio) + ")"), ln=1)
     pdf.cell(0, 6, _ascii("Obiettivo: " + str(s["obiettivo"]) + "   |   Intensita: " + str(s["intensita"]) + "   |   Durata: " + str(tot) + " min"), ln=1)
+    pdf.set_x(pdf.l_margin)
     pdf.multi_cell(0, 6, _ascii("Presenti: " + pres))
+    pdf.set_x(pdf.l_margin)
     pdf.multi_cell(0, 6, _ascii("Assenti: " + ass))
     pdf.ln(1)
     fase_corr = None
@@ -1116,7 +1514,20 @@ def seduta_pdf_bytes(s, ora_inizio="18:00"):
         pdf.set_font("Helvetica", "B", 11)
         pdf.cell(0, 6, _ascii("Note:"), ln=1)
         pdf.set_font("Helvetica", "", 10)
+        pdf.set_x(pdf.l_margin)
         pdf.multi_cell(0, 5, _ascii(note))
+    _ap_pdf = s.get("appunti") if isinstance(s.get("appunti"), dict) else {}
+    _pags_pdf = [p for p in (_ap_pdf.get("pagine") or []) if _png_pagina(p)]
+    for _np, _p in enumerate(_pags_pdf):
+        try:
+            pdf.add_page()
+            pdf.set_font("Helvetica", "B", 12)
+            pdf.set_text_color(194, 87, 8)
+            pdf.cell(0, 8, _ascii("Appunti " + str(_np + 1) + " - " + str(s.get("data", ""))), ln=1)
+            pdf.set_text_color(0, 0, 0)
+            pdf.image(io.BytesIO(base64.b64decode(_png_pagina(_p))), x=10, y=pdf.get_y() + 1, w=190)
+        except Exception:
+            pass
     out = pdf.output(dest="S")
     if isinstance(out, str):
         out = out.encode("latin-1")
@@ -1162,6 +1573,13 @@ def seduta_html_stampabile(s):
     ass = ", ".join(s.get("assenti_nomi") or []) or "\u2014"
     note = _html.escape(s.get("note", "") or "")
     note_html = ("<div class='note'><b>Note:</b> " + note + "</div>") if note else ""
+    _ap_pr = s.get("appunti") if isinstance(s.get("appunti"), dict) else {}
+    _pags_pr = [p for p in (_ap_pr.get("pagine") or []) if _png_pagina(p)]
+    app_html = ""
+    if _pags_pr:
+        app_html = ("<h2 style='margin-top:22px'>\u270D\uFE0F Appunti</h2>"
+                    + "".join("<img class='nota-print' src='data:image/png;base64," + _png_pagina(p) + "'/>"
+                              for p in _pags_pr))
     doc = (
         "<!DOCTYPE html><html lang='it'><head><meta charset='utf-8'>"
         "<title>Seduta " + s["data"] + "</title><style>"
@@ -1176,6 +1594,7 @@ def seduta_html_stampabile(s):
         ".pausa{color:#1a73c7;background:#eaf4ff;border:1px dashed #9cc6f0;border-radius:8px;"
         "padding:4px 12px;margin:6px 0;font-weight:600}"
         ".note{margin-top:16px;padding:10px 14px;background:#fff8e6;border-radius:8px}"
+        ".nota-print{width:100%;border:1px solid #ddd;border-radius:8px;margin:8px 0;background:#fff}"
         "@media print{body{margin:0}}</style></head><body>"
         "<h1>" + squadra + "</h1><p class='sub'>Scheda di allenamento</p>"
         "<div class='meta'><b>Data:</b> " + s["data"] + " &nbsp;\u00b7&nbsp; <b>Inizio:</b> " + _html.escape(ora_inizio) +
@@ -1183,7 +1602,7 @@ def seduta_html_stampabile(s):
         " &nbsp;\u00b7&nbsp; <b>Intensit\u00e0:</b> " + _html.escape(str(s["intensita"])) +
         " &nbsp;\u00b7&nbsp; <b>Durata:</b> " + str(tot) + " min<br>"
         "<b>Presenti:</b> " + _html.escape(pres) + "<br><b>Assenti:</b> " + _html.escape(ass) + "</div>"
-        + "".join(righe) + note_html +
+        + "".join(righe) + note_html + app_html +
         "<p style='margin-top:24px;color:#999;font-size:.8rem'>Generato con VolleyCoach Manager</p>"
         "</body></html>"
     )
@@ -1227,6 +1646,12 @@ def seduta_foglio_html(s, ora_inizio="18:00"):
             "<div class='fg-ex-campo'>" + campo_html + "</div>"
             "</div>"
         )
+    _ap_fg = s.get("appunti") if isinstance(s.get("appunti"), dict) else {}
+    _pags_fg = [p for p in (_ap_fg.get("pagine") or []) if _png_pagina(p)]
+    _app_html = "".join("<img class='nota-print' src='data:image/png;base64," + _png_pagina(p) + "'/>"
+                        for p in _pags_fg)
+    if _app_html:
+        _app_html = "<div class='fg-fase'>Appunti</div>" + _app_html
     html = (
         "<style>"
         "@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Patrick+Hand&display=swap');"
@@ -1250,6 +1675,7 @@ def seduta_foglio_html(s, ora_inizio="18:00"):
         ".foglio .fg-var{font-size:1rem;color:#5a6472}"
         ".foglio .fg-pausa{font-family:'Caveat',cursive;font-size:1.3rem;color:#1a73c7;"
         "background:#eaf4ff;border:1px dashed #9cc6f0;border-radius:8px;padding:2px 12px;margin:6px 0}"
+        ".foglio .nota-print{width:100%;border-radius:8px;border:1px dashed #d8c4a8;margin-top:12px;background:#fff}"
         "</style>"
         "<div class='foglio'>"
         "<div class='fg-h1'>Scheda allenamento</div>"
@@ -1257,8 +1683,8 @@ def seduta_foglio_html(s, ora_inizio="18:00"):
         " \u00b7 Obiettivo: " + _html.escape(str(s["obiettivo"])) +
         " \u00b7 Intensit\u00e0: " + _html.escape(str(s["intensita"])) + " \u00b7 Durata: " + str(tot) + " min<br>"
         "Presenti: " + _html.escape(pres) + "<br>Assenti: " + _html.escape(ass) + "</div>"
-        + "".join(righe) +
-        "</div>"
+        + "".join(righe) + _app_html
+        + "</div>"
     )
     return html
 
@@ -1294,17 +1720,27 @@ def editor_disegno(key_prefix, valore_corrente=""):
             modo = cc3.selectbox("Strumento", ["freedraw", "line", "rect", "circle", "transform"],
                                  key=f"{key_prefix}_mode")
             bg = court_background()
-            res = st_canvas(
+            _arg_cv = dict(
                 fill_color="rgba(255,255,255,0.0)",
                 stroke_width=spessore,
                 stroke_color=colore,
                 background_image=bg,
                 height=360, width=640,
                 drawing_mode=modo,
+                return_image_data=True,
                 key=f"{key_prefix}_canvas",
             )
-            if res is not None and res.image_data is not None:
-                b64 = canvas_to_base64(res.image_data)
+            try:
+                res = st_canvas(**_arg_cv)
+            except TypeError:
+                _arg_cv.pop("return_image_data", None)
+                res = st_canvas(**_arg_cv)
+            try:
+                _img_d = res.image_data if res is not None else None
+            except Exception:
+                _img_d = None
+            if _img_d is not None:
+                b64 = canvas_to_base64(_img_d)
                 if b64:
                     nuovo = b64
         else:
@@ -1707,7 +2143,8 @@ with st.sidebar:
 menu = st.radio(
     "",
     ["\U0001F3E0 Dashboard", "\U0001F465 Rosa", "\U0001F9E9 Periodizzazione", "\U0001F4CB Programma Allenamenti",
-     "\U0001F4DA Libreria Esercizi", "\U0001F310 Esercizi Online", "\U0001F5D3\uFE0F Calendario", "\U0001F3C6 Gare", "\U0001F4CA Presenze"],
+     "\U0001F4DA Libreria Esercizi", "\U0001F310 Esercizi Online", "\U0001F5D3\uFE0F Calendario",
+     "\u270D\uFE0F Appunti Pencil", "\U0001F3C6 Gare", "\U0001F4CA Presenze"],
     horizontal=True,
     label_visibility="collapsed",
 )
@@ -2653,7 +3090,11 @@ if menu == "\U0001F5D3\uFE0F Calendario":
                 _settimana = "\u00b7 " + ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"][date.fromisoformat(str(s["data"])).weekday()] + " "
             except Exception:
                 _settimana = ""
-            with st.expander(f"{_pallino} {_settimana}{_giorno} {_etichetta_mese(_mese_sel)} \u2014 {s['obiettivo']} \u00b7 {s['intensita']} \u00b7 {tot} min"):
+            _n_app_s, _t_app_s, _agg_app_s = appunti_info(s)
+            _etichetta_app = ""
+            if _n_app_s or _t_app_s:
+                _etichetta_app = "  \u270D\uFE0F" + ((" " + str(_n_app_s)) if _n_app_s else "")
+            with st.expander(f"{_pallino} {_settimana}{_giorno} {_etichetta_mese(_mese_sel)} \u2014 {s['obiettivo']} \u00b7 {s['intensita']} \u00b7 {tot} min" + _etichetta_app):
                 # --- Data della seduta: modificabile in ogni momento ---
                 _dc1, _dc2 = st.columns([2, 1])
                 try:
@@ -2718,6 +3159,10 @@ if menu == "\U0001F5D3\uFE0F Calendario":
                 # Vista "foglio bianco" con font scritto a mano / stampatello
                 st.markdown(seduta_foglio_html(s, ora_inizio=ora_inizio.strip() or "18:00"),
                             unsafe_allow_html=True)
+
+                # --- Appunti presi in palestra con la Pencil ---
+                with st.expander("\U0001F58B\uFE0F Appunti a mano libera (Pencil)" + _etichetta_app):
+                    editor_appunti(s, f"app_{_sid}")
 
                 # --- Correggi gli esercizi anche qui (nel Calendario) ---
                 with st.expander("\u270F\uFE0F Correggi gli esercizi di questa seduta"):
@@ -3038,6 +3483,72 @@ if menu == "\U0001F9E9 Periodizzazione":
                         st.rerun()
         else:
             st.info("Nessun microciclo. Crea le settimane di lavoro collegate a un macrociclo.")
+
+# ============================================================
+# APPUNTI PENCIL (blocco appunti a mano libera)
+# ============================================================
+if menu == "\u270D\uFE0F Appunti Pencil":
+    st.header("\u270D\uFE0F Appunti a mano libera (Pencil)")
+    st.caption("Apri questa sezione in palestra e scrivi con la Pencil (o col dito): "
+               "i tratti restano salvati nella seduta e si ritrovano anche nel Calendario.")
+    _sedute_app = sorted(st.session_state.sedute, key=lambda x: str(x.get("data", "")))
+    if not _sedute_app:
+        st.info("Prima crea una seduta in **Programma Allenamenti**: gli appunti si agganciano "
+                "alla seduta del giorno.")
+    else:
+        _oggi_iso = date.today().isoformat()
+
+        def _label_app(_x):
+            _n, _t, _a = appunti_info(_x)
+            _extra = ""
+            if _n:
+                _extra = "  \u270D\uFE0F " + str(_n) + " pag."
+            elif _t:
+                _extra = "  \u270D\uFE0F note"
+            return (str(_x.get("data", "")) + " \u00b7 " + str(_x.get("obiettivo", "")) +
+                    " \u00b7 " + str(_x.get("intensita", "")) + _extra)
+
+        _default = len(_sedute_app) - 1
+        _trovata = False
+        for _i, _x in enumerate(_sedute_app):
+            if str(_x.get("data", "")) == _oggi_iso:
+                _default = _i
+                _trovata = True
+                break
+        if not _trovata:
+            for _i, _x in enumerate(_sedute_app):
+                if str(_x.get("data", "")) >= _oggi_iso:
+                    _default = _i
+                    break
+        try:
+            if int(st.session_state.get("pencil_sel_seduta", 0)) >= len(_sedute_app):
+                st.session_state["pencil_sel_seduta"] = 0
+                _default = 0
+        except Exception:
+            st.session_state["pencil_sel_seduta"] = _default
+        _scelta = st.selectbox("Seduta", list(range(len(_sedute_app))), index=_default,
+                               format_func=lambda i: _label_app(_sedute_app[i]),
+                               key="pencil_sel_seduta")
+        _s_sc = _sedute_app[_scelta]
+        _n_pag, _testo_app, _agg_app = appunti_info(_s_sc)
+        _info_extra = ""
+        if _n_pag or _testo_app:
+            _info_extra = ("<br><span style='color:#7f93b0;font-size:.85rem'>\u270D\uFE0F "
+                           + str(_n_pag) + " pagina/e \u00b7 ultimo aggiornamento "
+                           + _html.escape(str(_agg_app or "\u2014")) + "</span>")
+        st.markdown(
+            "<div class='block-seduta'>\U0001F4C5 <b>" + _html.escape(str(_s_sc.get("data", "")))
+            + "</b> \u00b7 \U0001F3AF " + _html.escape(str(_s_sc.get("obiettivo", "")))
+            + " \u00b7 " + _html.escape(str(_s_sc.get("intensita", ""))) + _info_extra + "</div>",
+            unsafe_allow_html=True,
+        )
+        editor_appunti(_s_sc, "pencil_page", altezza=560)
+        if _n_pag or _testo_app:
+            with st.expander("\U0001F4C4 Rivedi le pagine di appunti di questa seduta"):
+                anteprima_appunti(_s_sc)
+                if _testo_app:
+                    st.markdown("**Note scritte**")
+                    st.write(_testo_app)
 
 # ============================================================
 # GARE (calendario partite + convocazioni + countdown)
