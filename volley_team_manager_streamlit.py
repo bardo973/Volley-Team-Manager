@@ -16,7 +16,7 @@ from datetime import datetime, date, timedelta
 
 # Librerie opzionali (il programma funziona anche senza)
 try:
-    from PIL import Image, ImageDraw
+    from PIL import Image, ImageDraw, ImageFont
     _HAS_PIL = True
 except Exception:
     _HAS_PIL = False
@@ -949,6 +949,212 @@ def _paper_background(w=880, h=520):
     return img
 
 
+# ============================================================
+# FOGLIO ALLENAMENTO DA ANNOTARE (sfondo su cui scrivere con la Pencil)
+# ============================================================
+_FONT_CACHE = {}
+_FONT_CANDIDATI = [
+    ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
+    ("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+     "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"),
+    ("C:/Windows/Fonts/segoeui.ttf", "C:/Windows/Fonts/segoeuib.ttf"),
+    ("C:/Windows/Fonts/arial.ttf", "C:/Windows/Fonts/arialbd.ttf"),
+    ("C:/Windows/Fonts/calibri.ttf", "C:/Windows/Fonts/calibrib.ttf"),
+    ("/System/Library/Fonts/Supplemental/Arial.ttf",
+     "/System/Library/Fonts/Supplemental/Arial Bold.ttf"),
+    ("/System/Library/Fonts/Helvetica.ttc", "/System/Library/Fonts/Helvetica.ttc"),
+    ("/Library/Fonts/Arial.ttf", "/Library/Fonts/Arial Bold.ttf"),
+]
+
+
+def _font_pil(dim, grassetto=False):
+    """Carica un font leggibile (DejaVu, Arial, Segoe...) con ripiego sicuro."""
+    if not _HAS_PIL:
+        return None
+    _k = (int(dim), bool(grassetto))
+    if _k in _FONT_CACHE:
+        return _FONT_CACHE[_k]
+    _f = None
+    for _reg, _bold in _FONT_CANDIDATI:
+        _p = _bold if grassetto else _reg
+        try:
+            if _p and os.path.exists(_p):
+                _f = ImageFont.truetype(_p, int(dim))
+                break
+        except Exception:
+            _f = None
+    if _f is None:
+        try:
+            _f = ImageFont.load_default()
+        except Exception:
+            _f = None
+    _FONT_CACHE[_k] = _f
+    return _f
+
+
+def _a_capo(draw, testo, font, larghezza):
+    """Spezza il testo in righe che stanno nella larghezza indicata."""
+    righe = []
+    for par in str(testo).split("\n"):
+        cur = ""
+        for p in par.split():
+            t = (cur + " " + p).strip()
+            try:
+                w = draw.textlength(t, font=font)
+            except Exception:
+                w = len(t) * 7
+            if w <= larghezza or not cur:
+                cur = t
+            else:
+                righe.append(cur)
+                cur = p
+        righe.append(cur)
+    return righe
+
+
+def foglio_seduta_png(s, larghezza=820):
+    """Disegna il foglio dell'allenamento come immagine: intestazione, esercizi
+    con orari e una colonna libera a destra (per scrivere di fianco) piu' una
+    fascia bianca sopra gli esercizi. E' lo sfondo su cui si scrive con la Pencil."""
+    if not _HAS_PIL:
+        return None
+    W = int(larghezza)
+    MG = 18
+    NOTE_W = 240
+    COL_W = W - 2 * MG - NOTE_W - 14
+    INK = (30, 36, 50)
+    MUTED = (122, 134, 154)
+    ACC = (196, 92, 10)
+    es = list(s.get("esercizi") or [])
+    try:
+        tot = sum(int(e.get("Durata_min", 0) or 0) for e in es)
+    except Exception:
+        tot = 0
+    try:
+        prog = costruisci_programma(s, str(s.get("ora_inizio", "18:00")))
+    except Exception:
+        prog = [{"tipo": "ex", "ex": e, "ora_i": "", "ora_f": "",
+                 "durata": str(e.get("Durata_min", "")) + " min",
+                 "fase": str(e.get("Fase", ""))} for e in es]
+    H = 300 + max(1, len(prog)) * 120 + 60
+    img = Image.new("RGB", (W, H), (255, 255, 255))
+    d = ImageDraw.Draw(img)
+
+    f_tit = _font_pil(19, True)
+    f_dt = _font_pil(13, True)
+    f_inf = _font_pil(12)
+    f_sm = _font_pil(10)
+    f_ex = _font_pil(13, True)
+    f_tx = _font_pil(11)
+    f_ora = _font_pil(11, True)
+
+    # ---- intestazione ----
+    d.rectangle([0, 0, W, 96], fill=(255, 249, 240))
+    d.rectangle([0, 0, 7, 96], fill=(255, 159, 28))
+    d.text((MG + 6, 12), "SCHEDA ALLENAMENTO", font=f_tit, fill=INK)
+    _data = str(s.get("data", ""))
+    try:
+        _wdt = d.textlength(_data, font=f_dt)
+    except Exception:
+        _wdt = len(_data) * 7
+    d.text((W - MG - _wdt, 14), _data, font=f_dt, fill=ACC)
+    d.text((MG + 6, 40), "Obiettivo: " + str(s.get("obiettivo", ""))
+           + "     Intensita: " + str(s.get("intensita", ""))
+           + "     Durata: " + str(tot) + " min", font=f_inf, fill=INK)
+    d.text((MG + 6, 60), "Inizio: " + str(s.get("ora_inizio", "18:00"))
+           + "     Esercizi: " + str(len(es))
+           + "     Presenti: " + str(len(s.get("presenti_nomi") or [])), font=f_sm, fill=MUTED)
+
+    # ---- fascia libera sopra gli esercizi ----
+    y = 106
+    d.rectangle([MG, y, W - MG, y + 56], outline=(203, 214, 230), width=1)
+    d.text((MG + 8, y + 6), "Scrivi qui sopra gli esercizi", font=f_sm, fill=(170, 180, 196))
+    for _yy in range(y + 24, y + 52, 14):
+        d.line([(MG + 8, _yy), (W - MG - 8, _yy)], fill=(235, 240, 247), width=1)
+
+    # ---- esercizi ----
+    y = 178
+    d.text((MG, y), "ESERCIZI", font=_font_pil(10, True), fill=MUTED)
+    y += 18
+    _fase_corr = None
+    for _r in prog:
+        if _r.get("tipo") == "pausa":
+            d.text((MG + 4, y), "~ pausa acqua " + str(_r.get("ora_i", "")), font=f_sm, fill=(90, 140, 190))
+            y += 18
+            continue
+        e = _r.get("ex") or {}
+        _fase = str(_r.get("fase", "") or "")
+        if _fase and _fase != _fase_corr:
+            _fase_corr = _fase
+            d.text((MG, y), str(FASI_LABEL.get(_fase, _fase)).upper(), font=_font_pil(9, True), fill=ACC)
+            y += 15
+        _desc = str(e.get("Descrizione", "") or "")
+        _var = str(e.get("Varianti", "") or "")
+        _rl = _a_capo(d, _desc, f_tx, COL_W - 12)[:4] if _desc else []
+        _row_h = max(96, 44 + len(_rl) * 14 + (14 if _var else 0) + 8)
+        # testo esercizio
+        _ora = (str(_r.get("ora_i", "")) + " - " + str(_r.get("ora_f", ""))).strip(" -")
+        _nome = str(e.get("Nome", ""))
+        _dur = str(_r.get("durata", ""))
+        _w_ora = 0
+        try:
+            _w_ora = d.textlength(_ora + "   ", font=f_ora)
+        except Exception:
+            pass
+        d.text((MG + 4, y + 4), _ora, font=f_ora, fill=ACC)
+        try:
+            d.text((MG + 4 + _w_ora, y + 3), " - " + _nome, font=f_ex, fill=INK)
+            _wn = d.textlength(" - " + _nome, font=f_ex)
+            d.text((MG + 6 + _w_ora + _wn, y + 6), "(" + _dur + ")", font=f_sm, fill=MUTED)
+        except Exception:
+            d.text((MG + 4, y + 3), _nome, font=f_ex, fill=INK)
+        _ty = y + 24
+        for _ln in _rl:
+            d.text((MG + 6, _ty), _ln, font=f_tx, fill=(70, 78, 94))
+            _ty += 14
+        if _var:
+            d.text((MG + 6, _ty), "Variante: " + _var[:60], font=_font_pil(10), fill=(150, 130, 100))
+            _ty += 13
+        # riquadro per scrivere di fianco
+        _nx = W - MG - NOTE_W
+        d.rectangle([_nx, y, W - MG, y + _row_h - 8], outline=(212, 221, 234), width=1)
+        for _yy in range(y + 24, y + _row_h - 12, 16):
+            d.line([(_nx + 6, _yy), (W - MG - 6, _yy)], fill=(238, 242, 248), width=1)
+        d.text((_nx + 6, y + 4), "note", font=_font_pil(9), fill=(176, 186, 200))
+        y += _row_h
+        d.line([(MG, y - 4), (W - MG, y - 4)], fill=(232, 237, 244), width=1)
+
+    # ---- pie' di pagina ----
+    y += 6
+    d.text((MG, y), "Scritto con la Pencil: gli appunti restano salvati in questa seduta.",
+           font=f_sm, fill=(168, 178, 194))
+    return img.crop((0, 0, W, min(H, y + 26)))
+
+
+def foglio_seduta_b64(s, larghezza=820):
+    """PNG base64 del foglio allenamento da usare come sfondo del canvas."""
+    try:
+        img = foglio_seduta_png(s, larghezza=larghezza)
+        if img is None:
+            return ""
+        buf = io.BytesIO()
+        img.save(buf, format="PNG", optimize=True)
+        return base64.b64encode(buf.getvalue()).decode("ascii")
+    except Exception:
+        return ""
+
+
+def _immagine_b64(b64):
+    """Immagine PIL da una stringa base64 (None se non e' valida)."""
+    if not (_HAS_PIL and b64):
+        return None
+    try:
+        return Image.open(io.BytesIO(base64.b64decode(b64))).convert("RGB")
+    except Exception:
+        return None
+
+
 def _nota_png_b64(image_data):
     """PNG base64 del foglio (sfondo bianco) con sopra i tratti della penna."""
     if image_data is None or not _HAS_PIL:
@@ -1179,8 +1385,6 @@ def editor_appunti(s, key_prefix, altezza=520, larghezza=880):
     stampa e nel PDF)."""
     ap = appunti_seduta(s)
     pagine = ap["pagine"]
-    if not pagine:
-        pagine.append({"png": "", "json": [], "aggiornato": ""})
 
     if not (_HAS_CANVAS and _HAS_PIL):
         st.warning("Per scrivere direttamente nella seduta manca un modulo (una volta sola):\n\n"
@@ -1191,35 +1395,81 @@ def editor_appunti(s, key_prefix, altezza=520, larghezza=880):
         _editor_testo(s, key_prefix)
         return
 
-    # ---- cambio pagina ----
+    # ---- crea la pagina su cui scrivere ----
     _kidx = f"{key_prefix}_idx"
+    bc1, bc2 = st.columns(2)
+    if bc1.button("\u270D\uFE0F Foglio degli allenamenti", key=f"{key_prefix}_newfoglio",
+                  use_container_width=True,
+                  help="Pagina con gli esercizi della seduta: scrivi sopra o di fianco a ogni esercizio."):
+        pagine.append({"tipo": "foglio", "sfondo": foglio_seduta_b64(s, larghezza=int(larghezza)),
+                       "png": "", "json": [], "aggiornato": ""})
+        _segna_appunti(ap)
+        save_state()
+        st.session_state[_kidx] = len(pagine) - 1
+        st.rerun()
+    if bc2.button("\U0001F4C4 Pagina bianca", key=f"{key_prefix}_newbianca",
+                  use_container_width=True, help="Un foglio a righe libero per appunti generici."):
+        pagine.append({"tipo": "bianco", "png": "", "json": [], "aggiornato": ""})
+        _segna_appunti(ap)
+        save_state()
+        st.session_state[_kidx] = len(pagine) - 1
+        st.rerun()
+
+    if not pagine:
+        st.info("Scegli come scrivere: **Foglio degli allenamenti** per annotare **sopra o di fianco agli esercizi**, "
+                "oppure **Pagina bianca** per appunti liberi.")
+        _editor_testo(s, key_prefix)
+        return
+
+    # ---- cambio pagina ----
     idx = int(st.session_state.get(_kidx, 0) or 0)
     if idx < 0 or idx >= len(pagine):
         idx = 0
         st.session_state[_kidx] = 0
-    if len(pagine) > 1:
-        nav1, nav2, nav3 = st.columns([1, 3, 1])
-        if nav1.button("\u25C0", key=f"{key_prefix}_prev", use_container_width=True):
-            st.session_state[_kidx] = (idx - 1) % len(pagine)
-            st.rerun()
-        nav2.markdown("<div style='text-align:center;font-weight:800;color:var(--vc-accent2)'>"
-                      "Pagina " + str(idx + 1) + " di " + str(len(pagine)) + "</div>",
-                      unsafe_allow_html=True)
-        if nav3.button("\u25B6", key=f"{key_prefix}_next", use_container_width=True):
-            st.session_state[_kidx] = (idx + 1) % len(pagine)
-            st.rerun()
 
     pag = pagine[idx]
     if not isinstance(pag, dict):
         pag = {"png": _png_pagina(pag), "json": [], "aggiornato": ""}
         pagine[idx] = pag
+    _tipo = str(pag.get("tipo", "") or "")
+
+    if len(pagine) > 1:
+        nav1, nav2, nav3 = st.columns([1, 3, 1])
+        if nav1.button("\u25C0", key=f"{key_prefix}_prev", use_container_width=True):
+            st.session_state[_kidx] = (idx - 1) % len(pagine)
+            st.rerun()
+        _etichetta = "Pagina " + str(idx + 1) + " di " + str(len(pagine))
+        if _tipo == "foglio":
+            _etichetta += " \u00b7 foglio esercizi"
+        elif _tipo == "bianco":
+            _etichetta += " \u00b7 foglio bianco"
+        nav2.markdown("<div style='text-align:center;font-weight:800;color:var(--vc-accent2)'>"
+                      + _etichetta + "</div>", unsafe_allow_html=True)
+        if nav3.button("\u25B6", key=f"{key_prefix}_next", use_container_width=True):
+            st.session_state[_kidx] = (idx + 1) % len(pagine)
+            st.rerun()
 
     colore, spessore, modo = _scelte_penna(key_prefix)
-    st.caption("\u270F\uFE0F Scrivi sul foglio: ogni tratto viene salvato in automatico nella seduta.")
+    if _tipo == "foglio":
+        st.caption("\u270F\uFE0F Scrivi **sopra** o **di fianco** agli esercizi (la colonna note e' a destra): "
+                   "ogni tratto si salva in automatico nella seduta.")
+    elif _tipo == "bianco":
+        st.caption("\u270F\uFE0F Foglio bianco a righe: ogni tratto viene salvato in automatico nella seduta.")
+    else:
+        st.caption("\u270F\uFE0F Scrivi sul foglio: ogni tratto viene salvato in automatico nella seduta.")
+
+    _sfondo = None
+    _larg, _alt = int(larghezza), int(altezza)
+    if _tipo == "foglio":
+        _sfondo = _immagine_b64(pag.get("sfondo"))
+        if _sfondo is not None:
+            _larg, _alt = _sfondo.size
+    if _sfondo is None:
+        _sfondo = _paper_background(_larg, _alt)
 
     _kw = dict(fill_color="rgba(255,255,255,0)", stroke_width=int(spessore),
-               stroke_color=colore, background_image=_paper_background(larghezza, altezza),
-               height=int(altezza), width=int(larghezza), drawing_mode=modo,
+               stroke_color=colore, background_image=_sfondo,
+               height=int(_alt), width=int(_larg), drawing_mode=modo,
                return_image_data=True, key=f"{key_prefix}_cv_{idx}")
     if _json_pagina(pag):
         _kw["initial_drawing"] = {"version": "4.4.0", "objects": _json_pagina(pag)}
@@ -1240,31 +1490,31 @@ def editor_appunti(s, key_prefix, altezza=520, larghezza=880):
         _sigk = f"{key_prefix}_sig_{idx}"
         if st.session_state.get(_sigk) != _sig:
             st.session_state[_sigk] = _sig
-            try:
-                _b64 = _nota_png_b64(res.image_data)
-            except Exception:
-                _b64 = ""
-            if _b64 or _png_pagina(pag):
+            if _objs:
+                try:
+                    _b64 = _nota_png_b64(res.image_data)
+                except Exception:
+                    _b64 = ""
                 pag["json"] = _objs
                 pag["png"] = _b64
                 pag["aggiornato"] = datetime.now().strftime("%d/%m/%Y %H:%M")
                 _segna_appunti(ap)
                 save_state()
+            elif _json_pagina(pag):
+                # tutte le scritte sono state cancellate con la gomma
+                pag["json"] = []
+                pag["png"] = ""
+                pag["aggiornato"] = datetime.now().strftime("%d/%m/%Y %H:%M")
+                _segna_appunti(ap)
+                save_state()
 
     _png = _png_pagina(pag)
-    az1, az2 = st.columns(2)
-    if az1.button("\u2795 Aggiungi pagina", key=f"{key_prefix}_addp", use_container_width=True):
-        pagine.append({"png": "", "json": [], "aggiornato": ""})
-        _segna_appunti(ap)
-        save_state()
-        st.session_state[_kidx] = len(pagine) - 1
-        st.rerun()
     if _png:
         try:
-            az2.download_button("\u2B07\uFE0F Scarica pagina (PNG)", data=base64.b64decode(_png),
-                                file_name="appunti_" + str(s.get("data", "")) + "_pag" + str(idx + 1) + ".png",
-                                mime="image/png", key=f"{key_prefix}_dl_{idx}",
-                                use_container_width=True)
+            st.download_button("\u2B07\uFE0F Scarica questa pagina (PNG)", data=base64.b64decode(_png),
+                               file_name="appunti_" + str(s.get("data", "")) + "_pag" + str(idx + 1) + ".png",
+                               mime="image/png", key=f"{key_prefix}_dl_{idx}",
+                               use_container_width=True)
         except Exception:
             pass
 
@@ -1521,11 +1771,29 @@ def seduta_pdf_bytes(s, ora_inizio="18:00"):
     for _np, _p in enumerate(_pags_pdf):
         try:
             pdf.add_page()
+            _is_f = isinstance(_p, dict) and str(_p.get("tipo", "") or "") == "foglio"
+            _tit = ("Foglio annotato" if _is_f else "Appunti " + str(_np + 1)) + " - " + str(s.get("data", ""))
             pdf.set_font("Helvetica", "B", 12)
             pdf.set_text_color(194, 87, 8)
-            pdf.cell(0, 8, _ascii("Appunti " + str(_np + 1) + " - " + str(s.get("data", ""))), ln=1)
+            pdf.cell(0, 8, _ascii(_tit), ln=1)
             pdf.set_text_color(0, 0, 0)
-            pdf.image(io.BytesIO(base64.b64decode(_png_pagina(_p))), x=10, y=pdf.get_y() + 1, w=190)
+            _raw = base64.b64decode(_png_pagina(_p))
+            _ix, _iy, _iw, _ih = 10, pdf.get_y() + 1, 190, 0
+            if _HAS_PIL:
+                try:
+                    _im = Image.open(io.BytesIO(_raw))
+                    _rap = float(_im.size[1]) / float(_im.size[0] or 1)
+                    _ih = _iw * _rap
+                    _hmax = pdf.h - _iy - pdf.b_margin - 2
+                    if _ih > _hmax:
+                        _ih = _hmax
+                        _iw = _ih / _rap
+                except Exception:
+                    _ih = 0
+            if _ih:
+                pdf.image(io.BytesIO(_raw), x=_ix, y=_iy, w=_iw, h=_ih)
+            else:
+                pdf.image(io.BytesIO(_raw), x=_ix, y=_iy, w=_iw)
         except Exception:
             pass
     out = pdf.output(dest="S")
@@ -1577,7 +1845,9 @@ def seduta_html_stampabile(s):
     _pags_pr = [p for p in (_ap_pr.get("pagine") or []) if _png_pagina(p)]
     app_html = ""
     if _pags_pr:
-        app_html = ("<h2 style='margin-top:22px'>\u270D\uFE0F Appunti</h2>"
+        _tit_pr = "\u270D\uFE0F Foglio annotato e appunti" if any(
+            isinstance(p, dict) and str(p.get("tipo", "") or "") == "foglio" for p in _pags_pr) else "\u270D\uFE0F Appunti"
+        app_html = ("<h2 style='margin-top:22px'>" + _tit_pr + "</h2>"
                     + "".join("<img class='nota-print' src='data:image/png;base64," + _png_pagina(p) + "'/>"
                               for p in _pags_pr))
     doc = (
@@ -1651,7 +1921,9 @@ def seduta_foglio_html(s, ora_inizio="18:00"):
     _app_html = "".join("<img class='nota-print' src='data:image/png;base64," + _png_pagina(p) + "'/>"
                         for p in _pags_fg)
     if _app_html:
-        _app_html = "<div class='fg-fase'>Appunti</div>" + _app_html
+        _tit_fg = "Foglio annotato" if any(
+            isinstance(p, dict) and str(p.get("tipo", "") or "") == "foglio" for p in _pags_fg) else "Appunti"
+        _app_html = "<div class='fg-fase'>" + _tit_fg + "</div>" + _app_html
     html = (
         "<style>"
         "@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Patrick+Hand&display=swap');"
